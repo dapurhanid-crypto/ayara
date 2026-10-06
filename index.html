@@ -1369,10 +1369,10 @@ function updateSyncBadge(status){
   
   const configs = {
     offline: { color: '#F4A100', pulse: false, title: 'Offline Mode - Data lokal saja' },
-connecting: { color: '#F4A100', pulse: true, title: 'Menghubungkan ke Supabase...' },
-syncing: { color: '#3B82F6', pulse: true, title: 'Syncing data...' },
-synced: { color: '#10B981', pulse: true, title: 'Online - Live Sync 3 Device' },
-error: { color: '#EF4444', pulse: false, title: 'Sync Error - Local Only' }
+    connecting: { color: '#F4A100', pulse: true, title: 'Menghubungkan ke Supabase...' },
+    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing data...' },
+    synced: { color: '#10B981', pulse: true, title: 'Online - Live Sync 3 Device' },
+    error: { color: '#EF4444', pulse: false, title: 'Sync Error - Local Only' }
   };
   const c = configs[status] || configs.offline;
   
@@ -1624,7 +1624,9 @@ window.__ayaraSupabase = {
 <!-- V31 OPSI A - PILL BALIK KE UKURAN ASLI, DOT 10px DI DALAM KIRI -->
 <style>
 @keyframes pingV31 {
-  75%, 100% { transform: translateY(-50%) scale(2.4); opacity: 0; }
+  0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+}
 }
 @keyframes glowV31 {
   0%,100% { transform: translateY(-50%) scale(1); opacity: 0.4; }
@@ -1656,18 +1658,18 @@ window.__ayaraSupabase = {
 }
 #ayaraOnlinePulseV31 {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #10B981;
+  opacity: 0;
   z-index: 1;
   pointer-events: none;
-  left: 0;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
-  opacity: 0;
+  transform: translate(-50%, -50%);
 }
-#ayaraOnlinePulseV31.active {
+#ayaraOnlinePulseV31.pulse-flow {
   animation: pingV31 1.8s cubic-bezier(0,0,0.2,1) infinite;
 }
 .ayaraLogoShiftRightV31 {
@@ -1803,10 +1805,10 @@ function updateSyncBadge(status){
   
   const configs = {
     offline: { color: '#F4A100', pulse: false, title: 'Offline' },
-connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
-syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
-synced: { color: '#10B981', pulse: true, title: 'Online' },
-error: { color: '#EF4444', pulse: false, title: 'Error' }
+    connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
+    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
+    synced: { color: '#10B981', pulse: true, title: 'Online' },
+    error: { color: '#EF4444', pulse: false, title: 'Error' }
   };
   const c = configs[status] || configs.offline;
   
@@ -1814,15 +1816,15 @@ error: { color: '#EF4444', pulse: false, title: 'Error' }
   dot.title = c.title;
   
   if(pulse){
-    pulse.style.borderColor = c.color;
+    pulse.style.background = c.color;
     if(c.pulse){
       pulse.style.display = 'block';
-      pulse.style.animation = 'pingV31 1.4s cubic-bezier(0,0,0.2,1) infinite';
-    } else if(status === 'synced'){
-      pulse.style.display = 'block';
-      pulse.style.animation = 'glowV31 2s ease-in-out infinite';
+      pulse.classList.add('pulse-flow');
+      pulse.style.animation = 'pingV31 1.8s cubic-bezier(0,0,0.2,1) infinite';
     } else {
       pulse.style.display = 'none';
+      pulse.classList.remove('pulse-flow');
+      pulse.style.animation = 'none';
     }
   }
 }
