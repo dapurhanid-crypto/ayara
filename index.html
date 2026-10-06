@@ -1369,10 +1369,10 @@ function updateSyncBadge(status){
   
   const configs = {
     offline: { color: '#F4A100', pulse: false, title: 'Offline Mode - Data lokal saja' },
-    connecting: { color: '#F4A100', pulse: true, title: 'Menghubungkan ke Supabase...' },
-    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing data...' },
-    synced: { color: '#10B981', pulse: false, title: 'Online - Live Sync 3 Device' },
-    error: { color: '#EF4444', pulse: false, title: 'Sync Error - Local Only' }
+connecting: { color: '#F4A100', pulse: true, title: 'Menghubungkan ke Supabase...' },
+syncing: { color: '#3B82F6', pulse: true, title: 'Syncing data...' },
+synced: { color: '#10B981', pulse: true, title: 'Online - Live Sync 3 Device' },
+error: { color: '#EF4444', pulse: false, title: 'Sync Error - Local Only' }
   };
   const c = configs[status] || configs.offline;
   
@@ -1659,12 +1659,16 @@ window.__ayaraSupabase = {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid #F4A100;
+  background: #10B981;
   z-index: 1;
   pointer-events: none;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
+  opacity: 0;
+}
+#ayaraOnlinePulseV31.active {
+  animation: pingV31 1.8s cubic-bezier(0,0,0.2,1) infinite;
 }
 .ayaraLogoShiftRightV31 {
   transform: translateX(6px) !important;
@@ -1799,10 +1803,10 @@ function updateSyncBadge(status){
   
   const configs = {
     offline: { color: '#F4A100', pulse: false, title: 'Offline' },
-    connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
-    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
-    synced: { color: '#10B981', pulse: false, title: 'Online' },
-    error: { color: '#EF4444', pulse: false, title: 'Error' }
+connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
+syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
+synced: { color: '#10B981', pulse: true, title: 'Online' },
+error: { color: '#EF4444', pulse: false, title: 'Error' }
   };
   const c = configs[status] || configs.offline;
   
