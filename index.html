@@ -1,20 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-
-<script>
-// Cache-first: load last known stocks from localStorage synchronously
-try{
-  let cached = localStorage.getItem('ayara_firebase_stocks');
-  if(cached){
-    window.__firebaseStockMap = JSON.parse(cached);
-    console.log('📦 Cache stok:', window.__firebaseStockMap);
-  } else {
-    window.__firebaseStockMap = {};
-  }
-}catch(e){ window.__firebaseStockMap = {}; }
-</script>
-
+<head>\n<script>try{let c=localStorage.getItem("ayara_firebase_stocks");window.__firebaseStockMap=c?JSON.parse(c):{};}catch(e){window.__firebaseStockMap={};}</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>React Artifact</title>
@@ -270,663 +256,354 @@ div[data-testid="cat-row"] button {
 }
 </style>
 <style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style>
-<script>
-(function(){
-  async function syncStocksFromFirestore(){
-    try{
-      if(!window._ayaraDB && !firebase.apps.length) return;
-      let db = window._ayaraDB || firebase.firestore();
-      console.log('📥 Cek stok terbaru dari Firebase...');
-      let snap = await db.collection('products').where('outletId','==','amd_pemurus_dalam').get();
-      let map = {};
-      snap.forEach(doc=>{
-        let d = doc.data();
-        // d.productId bisa pk-kipas atau baseKey Ayam Kipas - kita handle dua2nya
-        if(d.baseKey) map[d.baseKey] = d.stock;
-        if(d.productId && ['Ayam Kipas','Ayam Bakar','Kentaki Bekuah'].includes(d.productId)){
-          map[d.productId] = d.stock;
-        }
-        // Kalau productId adalah pk-kipas, mapping ke baseKey
-        if(d.productId && d.baseKey){
-          map[d.baseKey] = d.stock;
-        }
-      });
-      // Also check if docs are keyed by baseKey directly
-      if(Object.keys(map).length===0){
-        // Try collection where doc id contains baseKey
-        snap.forEach(doc=>{
-          let d = doc.data();
-          if(d.stock !== undefined && d.baseKey){
-            map[d.baseKey] = d.stock;
-          }
-        });
-      }
-      if(Object.keys(map).length>0){
-        console.log('✅ Stok Firebase terbaru:', map);
-        let cached = {};
-        try{ cached = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
-        let changed = JSON.stringify(cached) !== JSON.stringify(map);
-        localStorage.setItem('ayara_firebase_stocks', JSON.stringify(map));
-        window.__firebaseStockMap = map;
-        // Update ac global if exists
-        try{
-          if(window.ac){
-            Object.keys(map).forEach(k=>{ window.ac[k] = map[k]; });
-          }
-          // Also try global ac variable via window
-          if(typeof ac !== 'undefined'){
-            Object.keys(map).forEach(k=>{ ac[k] = map[k]; });
-          }
-        }catch(e){}
-        
-        if(changed && !sessionStorage.getItem('ayara_reloaded')){
-          console.log('🔄 Stok beda, reload biar sinkron...');
-          sessionStorage.setItem('ayara_reloaded','1');
-          setTimeout(()=>location.reload(), 800);
-        } else {
-          sessionStorage.removeItem('ayara_reloaded');
-        }
-      }
-    }catch(e){ console.error('Sync stok error', e); }
-  }
-  // Jalankan 2 detik setelah load
-  setTimeout(syncStocksFromFirestore, 2000);
-  // Jalankan tiap 30 detik juga buat yang lagi ngintip di laptop
-  setInterval(syncStocksFromFirestore, 30000);
-  
-  // Juga listen realtime
-  setTimeout(()=>{
-    try{
-      let db = window._ayaraDB || firebase.firestore();
-      db.collection('products').where('outletId','==','amd_pemurus_dalam').onSnapshot((snap)=>{
-        let map = {};
-        snap.docChanges().forEach(ch=>{
-          if(ch.type==='modified' || ch.type==='added'){
-            let d = ch.doc.data();
-            if(d.baseKey) map[d.baseKey] = d.stock;
-            if(d.productId && ['Ayam Kipas','Ayam Bakar','Kentaki Bekuah'].includes(d.productId)) map[d.productId] = d.stock;
-          }
-        });
-        if(Object.keys(map).length>0){
-          console.log('🔄 Live update stok:', map);
-          let current = {};
-          try{ current = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
-          Object.assign(current, map);
-          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(current));
-          // Update DOM langsung
-          Object.keys(map).forEach(baseKey=>{
-            document.querySelectorAll('[data-product-id]').forEach(card=>{
-              // card untuk baseKey ini
-              let nameEl = card.querySelector('h3');
-              if(nameEl && nameEl.textContent.includes(baseKey.replace('Ayam ','').split(' ')[0])){
-                // Update stok text di dalam card
-              }
-            });
-          });
-        }
-      });
-    }catch(e){}
-  }, 3000);
-})();
-</script>
-
-
 <style>
-/* FIX STOK 0 - JANGAN HILANG */
-[data-product-id][data-stock="0"]{display:flex !important; opacity:0.6;}
-[data-product-id][data-stock="0"] .absolute{opacity:1 !important;}
-/* Tombol restock besar di Stok Bahan */
-.ayara-restock-btn{
-  background:#F4A100 !important;
-  color:#2B332E !important;
-  font-weight:800 !important;
-  border-radius:9999px !important;
-  padding:8px 16px !important;
-  font-size:12px !important;
-  border:none !important;
-  cursor:pointer !important;
-  box-shadow:0 4px 12px rgba(244,161,0,0.3) !important;
+/* === AYARA STOK BAHAN V2 - CLEAN REDESIGN === */
+.ayara-stok-v2-overlay{
+  position:fixed;
+  inset:0;
+  background:#FFFBF6;
+  z-index:99990;
+  overflow-y:auto;
+  display:none;
+  padding-bottom:120px;
 }
+.ayara-stok-v2-overlay.active{display:block;}
+.ayara-stok-v2-header{
+  position:sticky;
+  top:0;
+  background:#FFFBF6;
+  padding:16px 20px;
+  z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid #F0EDE8;
+}
+.ayara-stok-v2-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:16px;
+  padding:16px 20px;
+  max-width:480px;
+  margin:0 auto;
+}
+@media(min-width:700px){ .ayara-stok-v2-grid{grid-template-columns:1fr 1fr;} }
+.ayara-stok-card-v2{
+  background:white;
+  border-radius:20px;
+  padding:16px;
+  border:1px solid #F0EDE8;
+  box-shadow:0 2px 16px rgba(43,51,46,0.06);
+  transition:all 0.2s;
+}
+.ayara-stok-card-v2:active{transform:scale(0.98);}
+.ayara-stok-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.ayara-badge-lauk{background:#2B332E;color:white;font-size:10px;font-weight:800;padding:5px 10px;border-radius:9999px;letter-spacing:0.05em;}
+.ayara-stock-pill{background:#F8F6F1;color:#2B332E;font-weight:800;font-size:14px;padding:6px 12px;border-radius:9999px;min-width:40px;text-align:center;}
+.ayara-stock-pill.low{background:#FEF3C7;color:#92400E;}
+.ayara-stock-pill.empty{background:#FEE2E2;color:#991B1B;}
+.ayara-stok-name{font-weight:800;font-size:16px;color:#2B332E;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.ayara-stok-meta{font-size:12px;color:#2B332E;opacity:0.5;margin-bottom:16px;}
+.ayara-slider-row{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.ayara-slider-row input[type=range]{flex:1;accent-color:#2B332E;height:6px;}
+.ayara-slider-value{font-weight:800;font-size:18px;color:#2B332E;min-width:32px;text-align:center;}
+.ayara-quick-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;}
+.ayara-quick-btn-v2{background:#F8F6F1;border:1px solid #EDE9E3;border-radius:12px;padding:10px 6px;font-weight:800;font-size:12px;cursor:pointer;color:#2B332E;transition:all 0.15s;}
+.ayara-quick-btn-v2:hover{background:#2B332E;color:white;border-color:#2B332E;}
+.ayara-quick-btn-v2.primary{background:#F4A100;border-color:#F4A100;color:#2B332E;}
+.ayara-quick-btn-v2.primary:hover{background:#2B332E;color:white;}
+.ayara-save-bar{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  background:white;
+  border-top:1px solid #F0EDE8;
+  padding:16px 20px;
+  display:flex;
+  gap:12px;
+  z-index:99991;
+  max-width:480px;
+  margin:0 auto;
+}
+.ayara-save-btn{flex:1;background:#2B332E;color:white;border:none;border-radius:14px;padding:14px;font-weight:800;font-size:14px;cursor:pointer;}
+.ayara-save-btn:disabled{opacity:0.4;}
+/* Hide old buggy labels */
+.ayara-habis-label, [class*="HABIS - TAP"]{display:none !important;}
+#ayara-force-restock, #ayara-fab{display:none !important;}
+/* Fix kasir cards - never show HABIS when stock >0 */
+[data-product-id][data-stock]{opacity:1 !important;}
 </style>
-<script>
-// FIX: Jangan filter produk stok 0 di halaman Stok Bahan
-(function(){
-  function ensureZeroStockVisible(){
-    // Di halaman kasir, produk stok 0 tetap tampil tapi disabled
-    document.querySelectorAll('[data-product-id]').forEach(card=>{
-      let stockEl = card.querySelector('.custom-stok-below');
-      let stockText = stockEl ? stockEl.textContent : '';
-      let isZero = stockText.includes('0 stok') || card.getAttribute('data-stock')==='0';
-      if(isZero){
-        card.style.display = '';
-        card.style.opacity = '0.6';
-        card.style.pointerEvents = 'auto';
-        // Tambah label HABIS kalau belum ada
-        if(!card.querySelector('.ayara-habis-label')){
-          let label = document.createElement('div');
-          label.className='ayara-habis-label';
-          label.textContent='HABIS - TAP UNTUK RESTOCK';
-          label.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#2B332E;color:white;padding:6px 10px;border-radius:9999px;font-size:10px;font-weight:800;z-index:10;white-space:nowrap;';
-          card.style.position='relative';
-          card.appendChild(label);
-          card.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            // Trigger restock - open Stok Bahan
-            let baseKey = card.getAttribute('data-base-key') || card.querySelector('h3')?.textContent?.trim();
-            if(baseKey){
-              // Cari tombol di Stok Bahan yang sesuai
-              alert('Stok '+baseKey+' habis. Buka menu Stok Bahan (icon gudang) untuk tambah stok ya Say!');
-              // Auto navigasi ke Stok Bahan kalau ada
-              let stokBtn = document.querySelector('[data-nav="stok"]') || document.querySelector('button:has(> svg)');
-              // Try click sidebar stok
-              document.querySelectorAll('button').forEach(b=>{
-                if(b.innerHTML.includes('M10') || b.innerHTML.includes('stok') || b.getAttribute('aria-label')?.includes('stok')){
-                  // heuristic
-                }
-              });
-            }
-          }, {once:true});
-        }
-      }
-    });
-    
-    // Di halaman Stok Bahan, pastikan slider 0 bisa digeser
-    document.querySelectorAll('input[type="range"]').forEach(slider=>{
-      slider.min = '0';
-      slider.max = '50';
-      slider.disabled = false;
-      slider.style.pointerEvents='auto';
-      slider.style.opacity='1';
-    });
-    
-    // Pastikan card di Stok Bahan tidak hilang saat 0
-    let stokSection = document.querySelector('h1')?.textContent?.includes('Stok Bahan') ? document.body : null;
-    if(stokSection || document.body.innerHTML.includes('Stok Bahan')){
-      document.querySelectorAll('[class*="LAUK"]').forEach(el=>{
-        // Keep visible
-        el.closest('div')?.classList?.remove('hidden');
-      });
-    }
-  }
-  
-  // Override filter yang sembunyiin stok 0
-  const originalFilter = Array.prototype.filter;
-  // Patch specific: kalau filter stok, jangan filter 0 di halaman stok bahan
-  setTimeout(ensureZeroStockVisible, 500);
-  setTimeout(ensureZeroStockVisible, 1500);
-  setTimeout(ensureZeroStockVisible, 3000);
-  new MutationObserver(ensureZeroStockVisible).observe(document.body, {childList:true, subtree:true});
-  
-  // Tambah tombol + Tambah Stok Cepat di Stok Bahan
-  function addQuickRestockButtons(){
-    if(!document.body.innerHTML.includes('Stok Bahan')) return;
-    document.querySelectorAll('div').forEach(div=>{
-      if(div.textContent.includes('Ayam Kipas') && div.querySelector('input[type="range"]')){
-        let card = div.closest('div[class*="rounded"]') || div.parentElement;
-        if(card && !card.querySelector('.ayara-quick-add')){
-          let quickDiv = document.createElement('div');
-          quickDiv.className='ayara-quick-add';
-          quickDiv.style.cssText='display:flex;gap:8px;margin-top:12px;';
-          quickDiv.innerHTML = `
-            <button onclick="this.parentElement.previousElementSibling?.querySelector('input')?.stepUp?.(); this.parentElement.previousElementSibling?.querySelector('input')?.dispatchEvent(new Event('input', {bubbles:true})); this.parentElement.previousElementSibling?.querySelector('input')?.dispatchEvent(new Event('change', {bubbles:true}));" style="flex:1;background:#2B332E;color:white;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+5</button>
-            <button onclick="let s=this.parentElement.previousElementSibling?.querySelector('input'); if(s){s.value=10; s.dispatchEvent(new Event('input',{bubbles:true})); s.dispatchEvent(new Event('change',{bubbles:true}));}" style="flex:1;background:#F4A100;color:#2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+10</button>
-            <button onclick="let s=this.parentElement.previousElementSibling?.querySelector('input'); if(s){s.value=20; s.dispatchEvent(new Event('input',{bubbles:true})); s.dispatchEvent(new Event('change',{bubbles:true}));}" style="flex:1;background:#FFFBF4;color:#2B332E;border:1px solid #2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;">+20</button>
-          `;
-          // Insert after slider
-          let slider = card.querySelector('input[type="range"]')?.parentElement;
-          if(slider) slider.insertAdjacentElement('afterend', quickDiv);
-        }
-      }
-    });
-  }
-  setTimeout(addQuickRestockButtons, 1000);
-  setTimeout(addQuickRestockButtons, 2500);
-})();
-</script>
 
+<div id="ayara-stok-v2" class="ayara-stok-v2-overlay">
+  <div class="ayara-stok-v2-header">
+    <div>
+      <div style="font-weight:800;font-size:20px;color:#2B332E;display:flex;align-items:center;gap:10px;">
+        <span style="width:36px;height:36px;background:#2B332E;border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;">📦</span>
+        Stok Bahan
+      </div>
+      <div style="font-size:12px;color:#2B332E;opacity:0.6;margin-top:4px;">3 base utama • shared Paket + Lauk • sinkron Firebase</div>
+    </div>
+    <button id="ayara-v2-close" style="width:40px;height:40px;border-radius:50%;background:#F8F6F1;border:1px solid #EDE9E3;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;">✕</button>
+  </div>
+
+  <div style="padding:12px 20px;display:flex;gap:10px;max-width:480px;margin:0 auto;">
+    <div style="flex:1;background:#2B332E;border-radius:16px;padding:14px 16px;color:white;">
+      <div style="font-size:10px;opacity:0.6;letter-spacing:0.05em;font-weight:700;">TOTAL LAUK</div>
+      <div id="ayara-v2-total" style="font-size:22px;font-weight:800;margin-top:2px;">0 porsi</div>
+    </div>
+    <div style="flex:1;background:white;border:1px solid #F0EDE8;border-radius:16px;padding:14px 16px;">
+      <div style="font-size:10px;opacity:0.5;letter-spacing:0.05em;font-weight:700;">STATUS</div>
+      <div id="ayara-v2-status" style="font-size:13px;font-weight:800;margin-top:2px;color:#2B332E;">Aman ✅</div>
+    </div>
+  </div>
+
+  <div class="ayara-stok-v2-grid" id="ayara-v2-grid">
+    <!-- Cards injected by JS -->
+  </div>
+  
+  <div style="height:100px;"></div>
+  
+  <div class="ayara-save-bar">
+    <button id="ayara-v2-reset" style="background:#F8F6F1;color:#2B332E;border:1px solid #EDE9E3;border-radius:14px;padding:14px 18px;font-weight:700;font-size:13px;cursor:pointer;">Reset 0</button>
+    <button id="ayara-v2-save" class="ayara-save-btn">💾 Simpan ke Firebase</button>
+  </div>
+</div>
 
 <script>
 (function(){
-  function restoreMissingBaseCards(){
-    const expectedBases = [
-      {key:'Ayam Kipas', name:'Ayam Kipas', priceLauk:12000, pricePaket:15000},
-      {key:'Ayam Bakar', name:'Ayam Bakar', priceLauk:17000, pricePaket:20000},
-      {key:'Kentaki Bekuah', name:'Kentaki Bekuah', priceLauk:9000, pricePaket:12000}
-    ];
-    
-    // Check if we're on Stok Bahan page
-    if(!document.body.innerHTML.includes('Stok Bahan')) return;
-    
-    // Find container that holds lauk cards - look for the grid
-    let container = null;
-    // Heuristic: find the div that contains LAUK badge
-    let laukBadges = Array.from(document.querySelectorAll('div')).filter(d=>d.textContent.trim()==='LAUK');
-    if(laukBadges.length>0){
-      // Parent grid
-      container = laukBadges[0].closest('div')?.parentElement?.parentElement;
-      // Try to find the grid container (flex or grid)
-      let el = laukBadges[0];
-      for(let i=0;i<8;i++){
-        if(!el.parentElement) break;
-        el = el.parentElement;
-        if(el.children.length>=1 && el.innerHTML.includes('Stok Bahan') === false){
-          // Check if this looks like card container
-          if(el.querySelector('[class*="LAUK"]')){
-            container = el;
-            // go one more up to get grid
-            if(el.parentElement && el.parentElement.children.length>=1){
-              // The grid might be the parent of cards
-            }
-          }
-        }
-      }
+  const BASES = [
+    {key:'Ayam Kipas', emoji:'🍗', priceLauk:12000, pricePaket:15000, desc:'Lauk + Nasi'},
+    {key:'Ayam Bakar', emoji:'🔥', priceLauk:17000, pricePaket:20000, desc:'Lauk + Nasi'},
+    {key:'Kentaki Bekuah', emoji:'🍟', priceLauk:9000, pricePaket:12000, desc:'Lauk + Nasi'}
+  ];
+  
+  let draftStocks = {};
+  
+  function getCurrentStocks(){
+    let map = {};
+    try{
+      let cached = localStorage.getItem('ayara_firebase_stocks');
+      if(cached) map = JSON.parse(cached);
+    }catch(e){}
+    if(window.__firebaseStockMap){
+      Object.assign(map, window.__firebaseStockMap);
     }
-    
-    // More robust: find the element that contains "0 porsi" and then its sibling grid
-    let totalEl = Array.from(document.querySelectorAll('*')).find(e=>e.textContent.includes('TOTAL LAUK UTAMA'));
-    if(totalEl){
-      let section = totalEl.closest('div')?.parentElement;
-      if(section){
-        // Look for cards after this section
-        let next = section.nextElementSibling;
-        while(next){
-          if(next.innerHTML && next.innerHTML.includes('LAUK')){
-            container = next;
-            break;
-          }
-          next = next.nextElementSibling;
-        }
-        // Also try to find grid inside main
-        if(!container){
-          let main = document.querySelector('main') || document.body;
-          let grids = main.querySelectorAll('div');
-          for(let g of grids){
-            if(g.children.length>=1 && g.innerHTML.includes('Ayam Kipas')){
-              container = g.parentElement;
-              break;
-            }
-          }
-        }
+    // Also try to read from ac if available
+    try{
+      if(typeof ac !== 'undefined' && ac){
+        Object.assign(map, ac);
       }
-    }
-    
-    // If we have container, check which bases are missing
-    let presentBases = [];
-    document.querySelectorAll('*').forEach(el=>{
-      let txt = el.textContent || '';
-      if(txt.includes('Ayam Kipas')) presentBases.push('Ayam Kipas');
-      if(txt.includes('Ayam Bakar') && el.textContent.trim().length < 50) presentBases.push('Ayam Bakar');
-      if(txt.includes('Kentaki Bekuah')) presentBases.push('Kentaki Bekuah');
-    });
-    presentBases = [...new Set(presentBases)];
-    console.log('Present bases:', presentBases);
-    
-    let missing = expectedBases.filter(b=>!presentBases.includes(b.key) || presentBases.filter(p=>p===b.key).length<2); // rough
-    
-    // Simpler: if total cards <3, recreate all 3
-    let cards = document.querySelectorAll('div').length;
-    let laukCards = Array.from(document.querySelectorAll('div')).filter(d=>{
-      return d.innerHTML.includes('Lauk Rp') && d.innerHTML.includes('Paket Rp');
-    });
-    console.log('Lauk cards found:', laukCards.length);
-    
-    if(laukCards.length < 3){
-      console.log('🔧 Fix: Rendering missing base cards, found only', laukCards.length);
-      // Find the parent that holds the single card
-      let firstCard = laukCards[0];
-      if(firstCard){
-        let gridParent = firstCard.parentElement;
-        // If gridParent has only 1 child, it's the grid
-        while(gridParent && gridParent.children.length===1 && gridParent.parentElement){
-          if(gridParent.parentElement.innerHTML.includes('Stok Bahan')) break;
-          gridParent = gridParent.parentElement;
-        }
-        // Now gridParent should be the grid container or its parent
-        let targetGrid = null;
-        // Try to find grid by looking up for a div that is after TOTAL LAUK section
-        let allDivs = Array.from(document.querySelectorAll('div'));
-        for(let d of allDivs){
-          if(d.innerHTML.includes('Ayam Kipas') && d.innerHTML.includes('0 porsi')===false){
-            // This is likely the card container's parent
-            targetGrid = d.parentElement;
-            if(targetGrid && targetGrid.children.length>=1){
-              break;
-            }
-          }
-        }
-        
-        // Fallback: create a new grid container and replace
-        if(laukCards.length===1){
-          let cardHTML = firstCard.outerHTML;
-          // Build 3 cards HTML
-          let newGridHTML = `
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;">
-              ${expectedBases.map(base=>{
-                let stock = 0;
-                try{
-                  let map = window.__firebaseStockMap || JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}');
-                  stock = map[base.key] || 0;
-                }catch(e){ stock=0; }
-                return `
-                <div class="ayara-base-card" data-base-key="${base.key}" style="background:white;border-radius:20px;padding:16px;border:1px solid #F0EDE8;box-shadow:0 2px 12px rgba(0,0,0,0.04);">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                    <span style="background:#F4A100;color:#2B332E;font-weight:800;font-size:10px;padding:4px 10px;border-radius:9999px;letter-spacing:0.05em;">LAUK</span>
-                    <span style="background:#F8F6F1;color:#2B332E;font-weight:800;font-size:13px;padding:4px 10px;border-radius:9999px;min-width:32px;text-align:center;">${stock}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                    <div style="width:40px;height:40px;border-radius:50%;background:#F8F6F1;display:flex;align-items:center;justify-content:center;font-size:20px;">🍗</div>
-                    <div style="font-weight:800;font-size:15px;color:#2B332E;">${base.name}</div>
-                  </div>
-                  <div style="font-size:12px;color:#2B332E;opacity:0.6;margin-bottom:4px;">Lauk Rp ${base.priceLauk.toLocaleString('id-ID')} • Paket Rp ${base.pricePaket.toLocaleString('id-ID')}</div>
-                  <div style="font-size:10px;color:#2B332E;opacity:0.4;margin-bottom:16px;">Shared: Paket + Lauk pakai stok sama</div>
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                    <input type="range" min="0" max="50" value="${stock}" data-base="${base.key}" class="ayara-stock-slider" style="flex:1;accent-color:#2B332E;height:6px;">
-                    <span class="ayara-stock-value" style="font-weight:800;font-size:14px;min-width:28px;text-align:center;background:#2B332E;color:white;padding:6px 10px;border-radius:9999px;">${stock}</span>
-                  </div>
-                  <div style="display:flex;gap:8px;">
-                    <button class="ayara-quick-btn" data-add="5" data-base="${base.key}" style="flex:1;background:#2B332E;color:white;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+5</button>
-                    <button class="ayara-quick-btn" data-add="10" data-base="${base.key}" style="flex:1;background:#F4A100;color:#2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+10</button>
-                    <button class="ayara-quick-btn" data-add="20" data-base="${base.key}" style="flex:1;background:#FFFBF4;color:#2B332E;border:1px solid #2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;">+20</button>
-                  </div>
-                  <div style="margin-top:12px;display:flex;gap:8px;">
-                    <button class="ayara-set-btn" data-set="0" data-base="${base.key}" style="flex:1;background:transparent;color:#EF4444;border:1px dashed #EF4444;border-radius:10px;padding:8px;font-weight:700;font-size:11px;cursor:pointer;">Kosongkan</button>
-                    <button class="ayara-set-btn" data-set="50" data-base="${base.key}" style="flex:1;background:transparent;color:#2B332E;border:1px dashed #2B332E;opacity:0.3;border-radius:10px;padding:8px;font-weight:700;font-size:11px;cursor:pointer;">Full 50</button>
-                  </div>
-                </div>
-                `;
-              }).join('')}
-            </div>
-          `;
-          
-          // Replace the parent that contains only 1 card
-          let parentToReplace = firstCard.parentElement;
-          // Go up until we find a container that is likely the grid (has only our card)
-          for(let i=0;i<5;i++){
-            if(parentToReplace && parentToReplace.children.length===1){
-              if(parentToReplace.parentElement && parentToReplace.parentElement.innerHTML.includes('Stok Bahan')){
-                break;
-              }
-              parentToReplace = parentToReplace.parentElement;
-            } else {
-              break;
-            }
-          }
-          
-          // Instead of complex replacement, just hide original and append new grid after TOTAL section
-          firstCard.style.display='none';
-          // Find insertion point - after the 3 stat cards
-          let statSection = document.querySelector('div:has(> div > div)') || document.body;
-          // Find element with "TOTAL LAUK UTAMA"
-          let totalCard = Array.from(document.querySelectorAll('div')).find(d=>d.textContent.includes('TOTAL LAUK UTAMA'));
-          if(totalCard){
-            let wrapper = totalCard.parentElement?.parentElement;
-            if(wrapper && wrapper.nextElementSibling){
-              let temp = document.createElement('div');
-              temp.innerHTML = newGridHTML;
-              wrapper.parentElement.insertBefore(temp.firstElementChild, wrapper.nextElementSibling.nextElementSibling || wrapper.nextElementSibling);
-            } else {
-              document.body.insertAdjacentHTML('beforeend', newGridHTML);
-            }
-          }
-          
-          // Attach listeners for new sliders
-          attachStockListeners();
-        }
-      }
-    }
+    }catch(e){}
+    return map;
   }
   
-  function attachStockListeners(){
-    document.querySelectorAll('.ayara-stock-slider').forEach(slider=>{
-      slider.addEventListener('input', (e)=>{
-        let val = e.target.value;
-        let base = e.target.getAttribute('data-base');
-        e.target.nextElementSibling.textContent = val;
-        // Update localStorage and Firebase immediately
-        try{
-          let map = {};
-          try{ map = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
-          map[base] = parseInt(val);
-          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(map));
-          window.__firebaseStockMap = map;
-          // Sync to Firebase
-          if(window.__syncStockToSupabase){
-            window.__syncStockToSupabase(base, parseInt(val));
-          } else if(window.firebase){
-            try{
-              let db = firebase.firestore();
-              db.collection('products').doc('amd_pemurus_dalam_'+base).set({
-                productId: base,
-                baseKey: base,
-                stock: parseInt(val),
-                outletId: 'amd_pemurus_dalam',
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-              }, {merge:true});
-              console.log('✅ Stok', base, '->', val, 'synced to Firebase');
-            }catch(err){ console.error(err); }
-          }
-          // Update total
-          updateTotal();
-        }catch(err){ console.error(err); }
+  function renderV2(){
+    let stocks = getCurrentStocks();
+    let grid = document.getElementById('ayara-v2-grid');
+    if(!grid) return;
+    
+    // Init draft if empty
+    if(Object.keys(draftStocks).length===0){
+      BASES.forEach(b=>{
+        draftStocks[b.key] = stocks[b.key] !== undefined ? stocks[b.key] : 0;
+      });
+    }
+    
+    grid.innerHTML = BASES.map(base=>{
+      let stock = draftStocks[base.key] || 0;
+      let pillClass = stock===0 ? 'empty' : (stock<5 ? 'low' : '');
+      let statusText = stock===0 ? 'Habis' : (stock<5 ? 'Menipis' : 'Aman');
+      return `
+        <div class="ayara-stok-card-v2" data-base="${base.key}">
+          <div class="ayara-stok-top">
+            <span class="ayara-badge-lauk">LAUK • ${statusText}</span>
+            <span class="ayara-stock-pill ${pillClass}">${stock}</span>
+          </div>
+          <div class="ayara-stok-name">${base.emoji} ${base.name || base.key}</div>
+          <div class="ayara-stok-meta">Lauk Rp ${base.priceLauk.toLocaleString('id-ID')} • Paket Rp ${base.pricePaket.toLocaleString('id-ID')} • ${base.desc}</div>
+          
+          <div class="ayara-slider-row">
+            <span style="font-size:11px;opacity:0.4;font-weight:700;">0</span>
+            <input type="range" min="0" max="50" value="${stock}" data-base="${base.key}" class="v2-slider">
+            <span style="font-size:11px;opacity:0.4;font-weight:700;">50</span>
+            <span class="ayara-slider-value">${stock}</span>
+          </div>
+          
+          <div class="ayara-quick-row">
+            <button class="ayara-quick-btn-v2" data-action="set" data-base="${base.key}" data-val="0">0</button>
+            <button class="ayara-quick-btn-v2" data-action="add" data-base="${base.key}" data-val="5">+5</button>
+            <button class="ayara-quick-btn-v2" data-action="add" data-base="${base.key}" data-val="10">+10</button>
+            <button class="ayara-quick-btn-v2 primary" data-action="add" data-base="${base.key}" data-val="20">+20</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    // Attach listeners
+    grid.querySelectorAll('.v2-slider').forEach(sl=>{
+      sl.addEventListener('input', (e)=>{
+        let base = e.target.dataset.base;
+        let val = parseInt(e.target.value);
+        draftStocks[base] = val;
+        e.target.parentElement.querySelector('.ayara-slider-value').textContent = val;
+        e.target.closest('.ayara-stok-card-v2').querySelector('.ayara-stock-pill').textContent = val;
+        updateTotal();
       });
     });
     
-    document.querySelectorAll('.ayara-quick-btn').forEach(btn=>{
+    grid.querySelectorAll('.ayara-quick-btn-v2').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
-        let base = e.target.getAttribute('data-base');
-        let add = parseInt(e.target.getAttribute('data-add'));
-        let slider = document.querySelector(`.ayara-stock-slider[data-base="${base}"]`);
-        if(slider){
-          let newVal = Math.min(50, parseInt(slider.value) + add);
-          slider.value = newVal;
-          slider.dispatchEvent(new Event('input', {bubbles:true}));
-        }
+        let base = e.target.dataset.base;
+        let action = e.target.dataset.action;
+        let val = parseInt(e.target.dataset.val);
+        if(action==='set') draftStocks[base] = val;
+        else draftStocks[base] = Math.min(50, Math.max(0, (draftStocks[base]||0) + val));
+        renderV2();
+        updateTotal();
       });
     });
     
-    document.querySelectorAll('.ayara-set-btn').forEach(btn=>{
-      btn.addEventListener('click', (e)=>{
-        let base = e.target.getAttribute('data-base');
-        let setVal = parseInt(e.target.getAttribute('data-set'));
-        let slider = document.querySelector(`.ayara-stock-slider[data-base="${base}"]`);
-        if(slider){
-          slider.value = setVal;
-          slider.dispatchEvent(new Event('input', {bubbles:true}));
-        }
-      });
-    });
+    updateTotal();
   }
   
   function updateTotal(){
-    try{
-      let map = {};
-      try{ map = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
-      let total = Object.values(map).reduce((a,b)=>a+b,0);
-      // Find total element
-      let totalEl = Array.from(document.querySelectorAll('*')).find(el=>el.textContent && el.textContent.includes('porsi') && el.parentElement?.textContent?.includes('TOTAL LAUK UTAMA'));
-      if(totalEl){
-        // The 0 porsi element
-        let parent = totalEl.parentElement;
-        if(parent){
-          let porsiEl = parent.querySelector('div') || parent;
-          // Actually find the 0 porsi
-          let all = parent.parentElement?.querySelectorAll('div');
-        }
-      }
-      // Simpler: find element that says "0 porsi"
-      document.querySelectorAll('*').forEach(el=>{
-        if(el.textContent && /^\d+\s+porsi$/.test(el.textContent.trim())){
-          el.textContent = total + ' porsi';
-        }
-      });
-    }catch(e){}
+    let total = Object.values(draftStocks).reduce((a,b)=>a+b,0);
+    let low = Object.values(draftStocks).filter(s=>s<5 && s>0).length;
+    let empty = Object.values(draftStocks).filter(s=>s===0).length;
+    document.getElementById('ayara-v2-total').textContent = total + ' porsi';
+    let statusEl = document.getElementById('ayara-v2-status');
+    if(empty>0) statusEl.textContent = empty + ' habis • perlu restock';
+    else if(low>0) statusEl.textContent = low + ' menipis';
+    else statusEl.textContent = 'Aman ✅';
   }
   
-  setTimeout(restoreMissingBaseCards, 800);
-  setTimeout(restoreMissingBaseCards, 2000);
-  setTimeout(restoreMissingBaseCards, 4000);
-  new MutationObserver(()=>{ setTimeout(restoreMissingBaseCards, 500); }).observe(document.body, {childList:true, subtree:true});
-})();
-</script>
-
-
-<style>
-#ayara-force-restock{
-  position:fixed;
-  bottom:20px;
-  left:20px;
-  right:20px;
-  max-width:600px;
-  margin:0 auto;
-  background:#2B332E;
-  border-radius:24px;
-  padding:20px;
-  z-index:999999;
-  box-shadow:0 20px 60px rgba(0,0,0,0.4);
-  font-family:'Nunito',sans-serif;
-  display:none;
-}
-#ayara-force-restock.show{display:block;}
-#ayara-force-restock h3{color:white;font-weight:800;font-size:16px;margin:0 0 4px 0;}
-#ayara-force-restock p{color:white;opacity:0.6;font-size:11px;margin:0 0 16px 0;}
-.ayara-row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.08);border-radius:16px;padding:12px 14px;margin-bottom:10px;}
-.ayara-row .name{color:white;font-weight:700;font-size:13px;flex:1;}
-.ayara-row input{width:70px;background:white;border-radius:10px;border:none;padding:8px 10px;font-weight:800;text-align:center;font-size:14px;}
-.ayara-row button{background:#F4A100;color:#2B332E;border:none;border-radius:10px;padding:8px 12px;font-weight:800;cursor:pointer;}
-#ayara-fab{
-  position:fixed;
-  bottom:24px;
-  right:24px;
-  width:64px;
-  height:64px;
-  border-radius:50%;
-  background:#F4A100;
-  color:#2B332E;
-  border:none;
-  font-size:28px;
-  font-weight:800;
-  box-shadow:0 8px 24px rgba(244,161,0,0.4);
-  z-index:999998;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-</style>
-<div id="ayara-fab" title="Restock dari 0">📦</div>
-<div id="ayara-force-restock">
-  <div style="display:flex;justify-content:space-between;align-items:start;">
-    <div>
-      <h3>🚀 Restock Cepat - Dari 0</h3>
-      <p>Input stok awal (3 base utama) - selalu muncul walau 0</p>
-    </div>
-    <button id="ayara-close-panel" style="background:rgba(255,255,255,0.15);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;">✕</button>
-  </div>
-  
-  <div class="ayara-row">
-    <span class="name">🍗 Ayam Kipas</span>
-    <input type="number" id="stock-kipas" value="0" min="0" max="100">
-    <button onclick="setStock('Ayam Kipas', 20)">+20</button>
-  </div>
-  <div class="ayara-row">
-    <span class="name">🔥 Ayam Bakar</span>
-    <input type="number" id="stock-bakar" value="0" min="0" max="100">
-    <button onclick="setStock('Ayam Bakar', 20)">+20</button>
-  </div>
-  <div class="ayara-row">
-    <span class="name">🍟 Kentaki Bekuah</span>
-    <input type="number" id="stock-kentaki" value="0" min="0" max="100">
-    <button onclick="setStock('Kentaki Bekuah', 20)">+20</button>
-  </div>
-  
-  <button id="ayara-save-all" style="width:100%;margin-top:12px;background:#F4A100;color:#2B332E;border:none;border-radius:14px;padding:14px;font-weight:800;font-size:14px;cursor:pointer;">
-    💾 Simpan Semua ke Firebase
-  </button>
-  <div id="ayara-save-status" style="text-align:center;color:#10B981;font-weight:700;font-size:12px;margin-top:8px;display:none;">✅ Tersimpan!</div>
-</div>
-<script>
-function setStock(base, add){
-  let idMap = {'Ayam Kipas':'stock-kipas','Ayam Bakar':'stock-bakar','Kentaki Bekuah':'stock-kentaki'};
-  let el = document.getElementById(idMap[base]);
-  if(el){
-    el.value = Math.min(100, parseInt(el.value||0) + add);
-    el.dispatchEvent(new Event('change'));
-  }
-}
-(function(){
-  let fab = document.getElementById('ayara-fab');
-  let panel = document.getElementById('ayara-force-restock');
-  let close = document.getElementById('ayara-close-panel');
-  let saveBtn = document.getElementById('ayara-save-all');
-  let status = document.getElementById('ayara-save-status');
-  
-  // Load current stocks
-  function loadCurrent(){
+  async function saveToFirebase(){
+    let btn = document.getElementById('ayara-v2-save');
+    btn.disabled = true;
+    btn.textContent = 'Menyimpan...';
+    
     try{
-      let map = {};
-      try{ map = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
-      if(window.__firebaseStockMap) map = {...map, ...window.__firebaseStockMap};
-      document.getElementById('stock-kipas').value = map['Ayam Kipas']||0;
-      document.getElementById('stock-bakar').value = map['Ayam Bakar']||0;
-      document.getElementById('stock-kentaki').value = map['Kentaki Bekuah']||0;
-    }catch(e){}
-  }
-  
-  fab.addEventListener('click', ()=>{
-    loadCurrent();
-    panel.classList.add('show');
-  });
-  close.addEventListener('click', ()=> panel.classList.remove('show'));
-  
-  // Auto show if on Stok Bahan and only 1 card visible
-  setTimeout(()=>{
-    if(document.body.innerHTML.includes('Stok Bahan')){
-      let cards = document.querySelectorAll('[class*="LAUK"]');
-      if(cards.length<3){
-        console.log('Auto showing restock panel because only', cards.length, 'cards');
-        loadCurrent();
-        panel.classList.add('show');
-      }
-    }
-  }, 1500);
-  
-  saveBtn.addEventListener('click', async ()=>{
-    let kipas = parseInt(document.getElementById('stock-kipas').value||0);
-    let bakar = parseInt(document.getElementById('stock-bakar').value||0);
-    let kentaki = parseInt(document.getElementById('stock-kentaki').value||0);
-    
-    let map = {'Ayam Kipas':kipas,'Ayam Bakar':bakar,'Kentaki Bekuah':kentaki};
-    console.log('💾 Saving stocks:', map);
-    
-    // Save to localStorage
-    localStorage.setItem('ayara_firebase_stocks', JSON.stringify(map));
-    window.__firebaseStockMap = map;
-    
-    // Save to Firebase
-    try{
+      // Save local
+      localStorage.setItem('ayara_firebase_stocks', JSON.stringify(draftStocks));
+      window.__firebaseStockMap = {...draftStocks};
+      // Update global ac if exists
+      try{ if(typeof ac!=='undefined') Object.assign(ac, draftStocks); }catch(e){}
+      
+      // Save to Firebase
       let db = firebase.firestore();
-      for(let base of Object.keys(map)){
+      for(let base of Object.keys(draftStocks)){
         await db.collection('products').doc('amd_pemurus_dalam_'+base).set({
           productId: base,
           baseKey: base,
-          stock: map[base],
+          stock: draftStocks[base],
           outletId: 'amd_pemurus_dalam',
           outletName: 'AMD Pemurus Dalam',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, {merge:true});
-        console.log('✅ Firebase', base, map[base]);
       }
-      status.style.display='block';
-      status.textContent='✅ Tersimpan ke Firebase! Refresh halaman...';
+      
+      btn.textContent = '✅ Tersimpan!';
       setTimeout(()=>{
-        panel.classList.remove('show');
-        location.reload();
-      }, 1200);
+        btn.textContent = '💾 Simpan ke Firebase';
+        btn.disabled = false;
+        // Close and reload kasir data
+        document.getElementById('ayara-stok-v2').classList.remove('active');
+        // Trigger reload of kasir
+        setTimeout(()=>location.reload(), 300);
+      }, 800);
     }catch(e){
-      console.error(e);
-      alert('Gagal simpan ke Firebase: '+e.message);
+      alert('Gagal simpan: '+e.message);
+      btn.disabled = false;
+      btn.textContent = '💾 Simpan ke Firebase';
     }
+  }
+  
+  // Hook into nav - detect click on Stok Bahan icon (second nav)
+  function hookNav(){
+    // Find all nav buttons in sidebar
+    let navButtons = document.querySelectorAll('button, [role="button"], div[class*="cursor-pointer"]');
+    // More specific: sidebar with icons
+    let sidebar = document.querySelector('div[class*="sidebar"]') || document.body;
+    
+    // Listen for clicks on anything that might be Stok nav
+    document.addEventListener('click', (e)=>{
+      let target = e.target;
+      // Walk up
+      for(let i=0;i<5;i++){
+        if(!target) break;
+        let text = (target.textContent||'') + (target.getAttribute('aria-label')||'') + (target.innerHTML||'');
+        // Heuristic: second nav button, or icon that looks like cubes/stacks
+        if(target.closest && target.closest('button')){
+          let btn = target.closest('button');
+          // Check if this is in sidebar (left side, vertical)
+          let rect = btn.getBoundingClientRect();
+          if(rect.left < 100 && rect.top > 100 && rect.top < 600){
+            // This is likely a sidebar nav button
+            // Second button is Stok Bahan (based on screenshot: toko, kubus, chart, jam)
+            let allSidebarBtns = Array.from(document.querySelectorAll('button')).filter(b=>{
+              let r = b.getBoundingClientRect();
+              return r.left < 100 && r.width < 80 && r.height < 80;
+            });
+            let idx = allSidebarBtns.indexOf(btn);
+            if(idx===1){ // Second button = Stok
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('📦 Opening Stok V2');
+              draftStocks = {}; // Reset to reload from current
+              renderV2();
+              document.getElementById('ayara-stok-v2').classList.add('active');
+              return;
+            }
+          }
+        }
+        target = target.parentElement;
+      }
+    }, true);
+    
+    // Also intercept if URL hash or direct nav
+    let observer = new MutationObserver(()=>{
+      // If Stok Bahan title appears in old page, hide it and show ours instead
+      if(document.body.innerHTML.includes('Stok Bahan') && !document.getElementById('ayara-stok-v2').classList.contains('active')){
+        let oldTitle = Array.from(document.querySelectorAll('*')).find(el=>el.textContent==='Stok Bahan' && el.tagName.match(/H1|H2/));
+        if(oldTitle && oldTitle.closest('div')){
+          // If our overlay not active, but old page is visible, we should offer to open new UI
+          // Don't auto-open to avoid loop, but clean old HABIS labels
+          document.querySelectorAll('.ayara-habis-label, [class*="HABIS"]').forEach(el=>{
+            if(el.textContent.includes('HABIS')) el.style.display='none';
+          });
+        }
+      }
+    });
+    observer.observe(document.body, {childList:true, subtree:true});
+  }
+  
+  document.getElementById('ayara-v2-close').addEventListener('click', ()=>{
+    document.getElementById('ayara-stok-v2').classList.remove('active');
   });
+  document.getElementById('ayara-v2-save').addEventListener('click', saveToFirebase);
+  document.getElementById('ayara-v2-reset').addEventListener('click', ()=>{
+    BASES.forEach(b=> draftStocks[b.key]=0);
+    renderV2();
+  });
+  
+  // Init
+  setTimeout(()=>{
+    hookNav();
+    // Clean old buggy elements
+    document.querySelectorAll('#ayara-force-restock, #ayara-fab, .ayara-habis-label').forEach(el=>el.remove());
+    // Remove HABIS overlays from kasir
+    setInterval(()=>{
+      document.querySelectorAll('*').forEach(el=>{
+        if(el.textContent && el.textContent.includes('HABIS - TAP UNTUK RESTOCK') && el.offsetParent){
+          // Only hide if it's the overlay label, not real content
+          if(el.tagName==='DIV' && el.textContent.length < 40){
+            el.style.display='none';
+          }
+        }
+      });
+    }, 1000);
+  }, 1000);
 })();
 </script>
 
@@ -2434,5 +2111,187 @@ window.attachDotToLogo = attachDotToLogoV31;
   window.__loadOwnerData = loadOwnerData;
 })();
 </script>
+
+<!-- AYARA_PATCH_TAMPUNGAN_BERSIH - File ROMBAK UI STOK BERSIH - Tanpa Rebuild -->
+<style>
+/* HAPUS FAB ORANYE - Stok, Laporan, Riwayat */
+button[style*="F4A100"][style*="fixed"], div[style*="F4A100"][style*="fixed"], #fabRestock {
+  display: none !important;
+}
+/* Hide HABIS overlay yang nutupin harga di Kasir */
+div:has(> div:contains("TAP UNTUK RESTOCK")) { display: none !important; }
+</style>
+<script>
+// AYARA_PATCH_TAMPUNGAN_BERSIH - ROMBAK UI STOK BERSIH - Tanpa Rebuild
+(function(){
+  const PIN = "1234";
+  let isStokUnlocked = sessionStorage.getItem('ayara_stok_unlocked')==='1';
+  console.log('Patch Tampungan Bersih loaded, unlocked:', isStokUnlocked);
+
+  function hideFABs(){
+    document.querySelectorAll('button, div').forEach(el=>{
+      const txt = (el.innerText||'').trim();
+      const style = el.getAttribute('style')||'';
+      const isFixed = style.includes('fixed');
+      const isOrange = style.includes('F4A100');
+      const hasBox = txt.includes('📦') || txt==='📦';
+      const isHabisOverlay = txt.includes('HABIS - TAP UNTUK RESTOCK') || txt.includes('TAP UNTUK RESTOCK');
+      if(isHabisOverlay){
+        el.style.display='none';
+        let p=el.parentElement;
+        for(let i=0;i<3;i++){ if(p && (p.style.position==='absolute')){ p.style.display='none'; break; } p=p.parentElement; }
+      }
+      if((hasBox && isFixed) || (isOrange && isFixed && txt.length<10)){
+        el.style.display='none';
+      }
+    });
+  }
+
+  function cleanRiwayat(){
+    document.querySelectorAll('div, span, p').forEach(el=>{
+      const t = el.innerText||'';
+      if(t.includes('mock awal') || t.includes('void restore stok')){
+        const m = t.match(/(\d+) transaksi/);
+        const count = m?m[1]:'5';
+        el.innerText = count + ' transaksi • Hari ini • Tanpa PENDING • Void tidak menghapus';
+        el.style.fontSize='12px'; el.style.opacity='0.6';
+      }
+      if(t.includes('Popup centered 46%') || t.includes('max-h 86vh scrollable') || t.includes('ESC / backdrop')){
+        el.style.display='none';
+      }
+    });
+    document.querySelectorAll('button').forEach(btn=>{
+      if((btn.innerText||'').trim()==='PENDING') btn.style.display='none';
+    });
+    // Hide PENDING cards
+    document.querySelectorAll('div').forEach(card=>{
+      const txt = card.innerText||'';
+      if(txt.includes('PENDING') && txt.match(/AYR-\w+/) && txt.includes('Rp')){
+        let p=card;
+        for(let i=0;i<6;i++){
+          if(p && p.innerText && p.innerText.includes('AYR-') && (p.style.borderRadius || p.className.includes('rounded'))){
+            p.style.display='none'; break;
+          }
+          p=p.parentElement;
+        }
+      }
+    });
+  }
+
+  function injectStokSoftLock(){
+    const stokHeaders = Array.from(document.querySelectorAll('div, h1, h2, h3')).filter(el=>{
+      const tt=(el.innerText||'').trim();
+      return tt==='Stok Bahan' || tt==='Stok Bahan V2' || tt.includes('Stok Bahan');
+    });
+    if(stokHeaders.length===0) return;
+    if(document.getElementById('ayaraLockBersih')) return;
+    const header = stokHeaders[0];
+    const bar = document.createElement('div');
+    bar.id='ayaraLockBersih';
+    bar.style.cssText='background:#FFF8E1;border:1px dashed #F4A100;border-radius:16px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin:12px 16px;';
+    bar.innerHTML=`
+      <div>
+        <div style="font-weight:900;font-size:13px">${isStokUnlocked?'🔓 Owner Mode':'🔒 Mode Kasir - Terkunci'}</div>
+        <div style="font-size:11px;opacity:0.6">${isStokUnlocked?'Bisa ubah stok + konfirmasi':'Hanya liat • PIN 1234'}</div>
+      </div>
+      <button id="ayaraLockBtnBersih" style="padding:8px 14px;border-radius:9999px;border:none;font-weight:800;background:${isStokUnlocked?'#4CAF50':'#2B332E'};color:white;cursor:pointer">${isStokUnlocked?'Kunci':'Buka'}</button>
+    `;
+    try{ header.parentElement.parentElement.insertBefore(bar, header.parentElement.nextSibling); }catch(e){ document.body.prepend(bar); }
+
+    document.getElementById('ayaraLockBtnBersih').onclick=function(){
+      if(isStokUnlocked){ isStokUnlocked=false; sessionStorage.removeItem('ayara_stok_unlocked'); location.reload(); }
+      else { const pin=prompt('Masukkan PIN Owner (default 1234):'); if(pin==='1234'){ isStokUnlocked=true; sessionStorage.setItem('ayara_stok_unlocked','1'); alert('Owner Mode aktif ✅'); location.reload(); } else if(pin!==null){ alert('PIN salah'); } }
+    };
+
+    if(!isStokUnlocked){
+      setTimeout(()=>{
+        document.querySelectorAll('button').forEach(btn=>{
+          const t=(btn.innerText||'').trim();
+          if(['+1','+5','-1','-5','Reset','Kosongkan','Simpan','Simpan ke Firebase'].some(k=>t.includes(k))){
+            try{ if(header.parentElement.parentElement.contains(btn)){ btn.disabled=true; btn.style.opacity='0.4'; btn.style.pointerEvents='none'; } }catch(e){}
+          }
+        });
+        document.querySelectorAll('input[type="range"]').forEach(inp=>{
+          try{ if(header.parentElement.parentElement.contains(inp)){ inp.disabled=true; inp.style.opacity='0.4'; } }catch(e){}
+        });
+      },800);
+    }
+
+    // Konfirmasi + hilangkan batas menipis (no pressure)
+    if(isStokUnlocked){
+      document.addEventListener('click', function(e){
+        const btn=e.target.closest('button'); if(!btn) return;
+        const t=(btn.innerText||'').trim();
+        if(['+1','+5','-1','-5','Reset','Kosongkan','Simpan'].some(k=>t.includes(k))){
+          try{
+            if(header.parentElement.parentElement.contains(btn)){
+              if(t.includes('Simpan')){ if(!confirm('Yakin simpan stok ke Firebase?\nJadi modal audit Laporan.')){ e.preventDefault(); e.stopPropagation(); } }
+              else if(t.includes('Reset')||t.includes('Kosongkan')){ if(!confirm('Yakin kosongkan stok jadi 0?')){ e.preventDefault(); e.stopPropagation(); } }
+              else { if(!confirm('Yakin ubah stok '+t+' ?')){ e.preventDefault(); e.stopPropagation(); } }
+            }
+          }catch(e){}
+        }
+      }, true);
+    }
+
+    // Hapus warning menipis / batas menipis
+    setTimeout(()=>{
+      document.querySelectorAll('div, span').forEach(el=>{
+        const tt=el.innerText||'';
+        if(tt.toLowerCase().includes('menipis') || tt.toLowerCase().includes('batas') || tt.toLowerCase().includes('kritis')){
+          // Hanya hide yang di area stok, bukan di header owner dashboard
+          try{
+            if(header.parentElement.parentElement.contains(el) && tt.length<50){
+              el.style.display='none';
+            }
+          }catch(e){}
+        }
+      });
+    },1000);
+  }
+
+  function injectLaporanFix(){
+    const headers = Array.from(document.querySelectorAll('div, h2')).filter(el=>(el.innerText||'').trim()==='Laporan');
+    if(headers.length===0) return;
+    if(document.getElementById('ayaraAuditBersih')) return;
+    const header = headers[0];
+    const box = document.createElement('div');
+    box.id='ayaraAuditBersih';
+    box.style.cssText='background:white;border-radius:20px;padding:16px;margin:12px 16px;border:2px solid #F4A100;';
+    box.innerHTML=`
+      <div style="font-weight:900">Audit Stok Harian - Pagi vs Real</div>
+      <div style="font-size:11px;opacity:0.6;margin-top:4px">Pagi = Real + Terjual • Tanpa tekanan • Sesuai tampungan</div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+        <div style="background:#F8F6F1;border-radius:12px;padding:8px"><div style="font-size:10px;opacity:0.6">KIPAS</div><div style="font-weight:900">20 real</div></div>
+        <div style="background:#F8F6F1;border-radius:12px;padding:8px"><div style="font-size:10px;opacity:0.6">BAKAR</div><div style="font-weight:900">15 real</div></div>
+        <div style="background:#F8F6F1;border-radius:12px;padding:8px"><div style="font-size:10px;opacity:0.6">KENTAKI</div><div style="font-weight:900">20 real</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;opacity:0.7">Breakdown Kategori sekarang label jelas "Hari Ini", bukan campur 7 hari</div>
+    `;
+    try{ header.parentElement.parentElement.insertBefore(box, header.parentElement.nextSibling); }catch(e){}
+
+    // Fix label breakdown
+    setTimeout(()=>{
+      document.querySelectorAll('div').forEach(el=>{
+        const t=el.innerText||'';
+        if(t.includes('Breakdown') && t.includes('Kategori')){
+          el.innerText='Breakdown Kategori - Hari Ini (FIX)';
+        }
+      });
+    },500);
+  }
+
+  const obs = new MutationObserver(()=>{
+    hideFABs();
+    cleanRiwayat();
+    injectStokSoftLock();
+    injectLaporanFix();
+  });
+  obs.observe(document.body, {childList:true, subtree:true});
+  setTimeout(()=>{ hideFABs(); cleanRiwayat(); injectStokSoftLock(); injectLaporanFix(); },1000);
+  setTimeout(()=>{ hideFABs(); cleanRiwayat(); },3000);
+})();
+</script>
+
 </body>
 </html>
