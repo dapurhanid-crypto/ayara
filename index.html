@@ -739,12 +739,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
 <script>
 (function(){
   function finalPolish(){
+    try{
     // Header capsule only logotype
     const headerInner = document.querySelector('.sticky.top-0.z-20 > div');
     if(headerInner){
       const right = headerInner.querySelector('.flex.items-center.gap-2');
       if(right) right.style.display='none';
-      const badge = headerInner.querySelector('span.hidden.lg\:inline-flex');
+      const badge = headerInner.querySelector('[class*="lg:inline-flex"]');
       if(badge) badge.style.display='none';
     }
     // Category pills active
@@ -773,10 +774,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
       });
     }
   }
-  setTimeout(finalPolish, 500);
-  setTimeout(finalPolish, 2000);
-  setInterval(finalPolish, 3000);
-  new MutationObserver(finalPolish).observe(document.body, {childList:true, subtree:true});
+  try{ finalPolish(); }catch(e){ console.log('finalPolish skip', e); }
+  setTimeout(()=>{ try{ finalPolish(); }catch(e){} }, 2000);
+  // setInterval dihapus biar ga spam console
+
 })();
 </script>
 
