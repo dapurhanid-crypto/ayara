@@ -370,6 +370,120 @@ div[data-testid="cat-row"] button {
 })();
 </script>
 
+
+<style>
+/* FIX STOK 0 - JANGAN HILANG */
+[data-product-id][data-stock="0"]{display:flex !important; opacity:0.6;}
+[data-product-id][data-stock="0"] .absolute{opacity:1 !important;}
+/* Tombol restock besar di Stok Bahan */
+.ayara-restock-btn{
+  background:#F4A100 !important;
+  color:#2B332E !important;
+  font-weight:800 !important;
+  border-radius:9999px !important;
+  padding:8px 16px !important;
+  font-size:12px !important;
+  border:none !important;
+  cursor:pointer !important;
+  box-shadow:0 4px 12px rgba(244,161,0,0.3) !important;
+}
+</style>
+<script>
+// FIX: Jangan filter produk stok 0 di halaman Stok Bahan
+(function(){
+  function ensureZeroStockVisible(){
+    // Di halaman kasir, produk stok 0 tetap tampil tapi disabled
+    document.querySelectorAll('[data-product-id]').forEach(card=>{
+      let stockEl = card.querySelector('.custom-stok-below');
+      let stockText = stockEl ? stockEl.textContent : '';
+      let isZero = stockText.includes('0 stok') || card.getAttribute('data-stock')==='0';
+      if(isZero){
+        card.style.display = '';
+        card.style.opacity = '0.6';
+        card.style.pointerEvents = 'auto';
+        // Tambah label HABIS kalau belum ada
+        if(!card.querySelector('.ayara-habis-label')){
+          let label = document.createElement('div');
+          label.className='ayara-habis-label';
+          label.textContent='HABIS - TAP UNTUK RESTOCK';
+          label.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#2B332E;color:white;padding:6px 10px;border-radius:9999px;font-size:10px;font-weight:800;z-index:10;white-space:nowrap;';
+          card.style.position='relative';
+          card.appendChild(label);
+          card.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            // Trigger restock - open Stok Bahan
+            let baseKey = card.getAttribute('data-base-key') || card.querySelector('h3')?.textContent?.trim();
+            if(baseKey){
+              // Cari tombol di Stok Bahan yang sesuai
+              alert('Stok '+baseKey+' habis. Buka menu Stok Bahan (icon gudang) untuk tambah stok ya Say!');
+              // Auto navigasi ke Stok Bahan kalau ada
+              let stokBtn = document.querySelector('[data-nav="stok"]') || document.querySelector('button:has(> svg)');
+              // Try click sidebar stok
+              document.querySelectorAll('button').forEach(b=>{
+                if(b.innerHTML.includes('M10') || b.innerHTML.includes('stok') || b.getAttribute('aria-label')?.includes('stok')){
+                  // heuristic
+                }
+              });
+            }
+          }, {once:true});
+        }
+      }
+    });
+    
+    // Di halaman Stok Bahan, pastikan slider 0 bisa digeser
+    document.querySelectorAll('input[type="range"]').forEach(slider=>{
+      slider.min = '0';
+      slider.max = '50';
+      slider.disabled = false;
+      slider.style.pointerEvents='auto';
+      slider.style.opacity='1';
+    });
+    
+    // Pastikan card di Stok Bahan tidak hilang saat 0
+    let stokSection = document.querySelector('h1')?.textContent?.includes('Stok Bahan') ? document.body : null;
+    if(stokSection || document.body.innerHTML.includes('Stok Bahan')){
+      document.querySelectorAll('[class*="LAUK"]').forEach(el=>{
+        // Keep visible
+        el.closest('div')?.classList?.remove('hidden');
+      });
+    }
+  }
+  
+  // Override filter yang sembunyiin stok 0
+  const originalFilter = Array.prototype.filter;
+  // Patch specific: kalau filter stok, jangan filter 0 di halaman stok bahan
+  setTimeout(ensureZeroStockVisible, 500);
+  setTimeout(ensureZeroStockVisible, 1500);
+  setTimeout(ensureZeroStockVisible, 3000);
+  new MutationObserver(ensureZeroStockVisible).observe(document.body, {childList:true, subtree:true});
+  
+  // Tambah tombol + Tambah Stok Cepat di Stok Bahan
+  function addQuickRestockButtons(){
+    if(!document.body.innerHTML.includes('Stok Bahan')) return;
+    document.querySelectorAll('div').forEach(div=>{
+      if(div.textContent.includes('Ayam Kipas') && div.querySelector('input[type="range"]')){
+        let card = div.closest('div[class*="rounded"]') || div.parentElement;
+        if(card && !card.querySelector('.ayara-quick-add')){
+          let quickDiv = document.createElement('div');
+          quickDiv.className='ayara-quick-add';
+          quickDiv.style.cssText='display:flex;gap:8px;margin-top:12px;';
+          quickDiv.innerHTML = `
+            <button onclick="this.parentElement.previousElementSibling?.querySelector('input')?.stepUp?.(); this.parentElement.previousElementSibling?.querySelector('input')?.dispatchEvent(new Event('input', {bubbles:true})); this.parentElement.previousElementSibling?.querySelector('input')?.dispatchEvent(new Event('change', {bubbles:true}));" style="flex:1;background:#2B332E;color:white;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+5</button>
+            <button onclick="let s=this.parentElement.previousElementSibling?.querySelector('input'); if(s){s.value=10; s.dispatchEvent(new Event('input',{bubbles:true})); s.dispatchEvent(new Event('change',{bubbles:true}));}" style="flex:1;background:#F4A100;color:#2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+10</button>
+            <button onclick="let s=this.parentElement.previousElementSibling?.querySelector('input'); if(s){s.value=20; s.dispatchEvent(new Event('input',{bubbles:true})); s.dispatchEvent(new Event('change',{bubbles:true}));}" style="flex:1;background:#FFFBF4;color:#2B332E;border:1px solid #2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;">+20</button>
+          `;
+          // Insert after slider
+          let slider = card.querySelector('input[type="range"]')?.parentElement;
+          if(slider) slider.insertAdjacentElement('afterend', quickDiv);
+        }
+      }
+    });
+  }
+  setTimeout(addQuickRestockButtons, 1000);
+  setTimeout(addQuickRestockButtons, 2500);
+})();
+</script>
+
 </head>
 <body>
 <div id="pinLock" style="position:fixed;inset:0;z-index:99999;background:#F8F6F1;display:flex;flex-direction:column;overflow:hidden;">
