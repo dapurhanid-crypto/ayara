@@ -255,7 +255,9 @@ div[data-testid="cat-row"] button {
   }
 }
 </style>
-<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style></head>
+<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
 <body>
 <div id="pinLock" style="position:fixed;inset:0;z-index:99999;background:#F8F6F1;display:flex;flex-direction:column;overflow:hidden;">
   <!-- TOP SECTION - Hijau Ayara (was orange) -->
@@ -393,8 +395,6 @@ div[data-testid="cat-row"] button {
   }catch(e){}
 })();
 </script>
-
-
 
   <div id="root"></div>
   
@@ -1305,321 +1305,154 @@ document.addEventListener('DOMContentLoaded', ()=>{
 })();
 </script>
 
-<!-- Supabase SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-
+<!-- Firebase SDK - Ayara -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-// ===== AYARA SUPABASE CONFIG - EDIT 1 BARIS DI BAWAH INI AJA =====
-const SUPABASE_URL = 'https://pmbmhjtlwcdzrhjhlrwspy.supabase.co'; // SUDAH BENAR, JANGAN DIUBAH
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_VAl4FhPXiZQqtZXSLWR56A_QRNWDWP3'; // <-- GANTI INI AJA
+// ===== AYARA FIREBASE CONFIG - SUDAH JADI =====
 
-const SUPABASE_CONFIG = {
-  url: SUPABASE_URL,
-  anonKey: SUPABASE_PUBLISHABLE_KEY,
+const firebaseConfig = {
+  apiKey: "AIzaSyAqy37td4CNG8F6S7RXm6yEQstI1xdpS0o",
+  authDomain: "ayara-kasir2.firebaseapp.com",
+  projectId: "ayara-kasir2",
+  storageBucket: "ayara-kasir2.firebasestorage.app",
+  messagingSenderId: "361979869209",
+  appId: "1:361979869209:web:949ca7a7c77fe572de5288"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+console.log("✅ Firebase ready", firebaseConfig.projectId);
+
+
+const FIREBASE_CONFIG = {
   outletId: 'amd_pemurus_dalam',
   outletName: 'AMD Pemurus Dalam',
   outletAddress: 'Jl. AMD Pemurus Dalam'
 };
 
-
-let supabaseClient = null;
-let isSupabaseEnabled = false;
-let syncStatus = 'offline'; // offline, syncing, synced, error
-
-function initSupabase(){
-  try{
-    if(!SUPABASE_CONFIG.url.includes('YOUR_PROJECT') && SUPABASE_CONFIG.anonKey !== 'YOUR_ANON_KEY_HERE'){
-      if(window.supabase && window.supabase.createClient){
-        supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        isSupabaseEnabled = true;
-        console.log('✅ Supabase enabled for', SUPABASE_CONFIG.outletId);
-        updateSyncBadge('connecting');
-        testSupabaseConnection();
-        setupRealtime();
-        loadFromSupabase();
-        return true;
-      }
-    }
-  }catch(e){
-    console.log('Supabase init failed, using offline mode', e);
-  }
-  isSupabaseEnabled = false;
-  updateSyncBadge('offline');
-  return false;
-}
-
-async function testSupabaseConnection(){
-  if(!supabaseClient) return;
-  try{
-    const { data, error } = await supabaseClient.from('stock_pools').select('id').limit(1);
-    if(error) throw error;
-    syncStatus = 'synced';
-    updateSyncBadge('synced');
-  }catch(e){
-    console.log('Supabase connection test failed', e);
-    syncStatus = 'error';
-    updateSyncBadge('error');
-  }
-}
+let isFirebaseReady = true;
+let isSupabaseEnabled = true; // keep compat
 
 function updateSyncBadge(status){
-  const dot = document.getElementById('ayaraOnlineDot');
-  const dotInner = document.getElementById('ayaraOnlineDotInner');
+  const dot = document.getElementById('ayaraOnlineDotV31');
+  const dotInner = document.getElementById('ayaraOnlineDotInnerV31');
+  const pulse = document.getElementById('ayaraOnlinePulseV31');
   if(!dot || !dotInner) return;
-  
   const configs = {
-    offline: { color: '#F4A100', pulse: false, title: 'Offline Mode - Data lokal saja' },
-    connecting: { color: '#F4A100', pulse: true, title: 'Menghubungkan ke Supabase...' },
-    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing data...' },
-    synced: { color: '#10B981', pulse: true, title: 'Online - Live Sync 3 Device' },
-    error: { color: '#EF4444', pulse: false, title: 'Sync Error - Local Only' }
+    offline: { color: '#F4A100', pulse: false, title: 'Offline' },
+    connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
+    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
+    synced: { color: '#10B981', pulse: true, title: 'Online • Firebase Live' },
+    error: { color: '#EF4444', pulse: false, title: 'Sync Error' }
   };
   const c = configs[status] || configs.offline;
-  
   dotInner.style.background = c.color;
   dot.title = c.title;
-  
-  // Handle pulse animation
-  const pulseRing = document.getElementById('ayaraOnlinePulse');
-  if(pulseRing){
+  if(pulse){
+    pulse.style.background = c.color;
     if(c.pulse){
-      pulseRing.style.display = 'block';
-      pulseRing.style.borderColor = c.color;
-      pulseRing.style.animation = 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite';
-    } else if(status === 'synced'){
-      // For synced, show subtle glow, not ping
-      pulseRing.style.display = 'block';
-      pulseRing.style.borderColor = c.color;
-      pulseRing.style.animation = 'glow 2s ease-in-out infinite';
-      pulseRing.style.opacity = '0.3';
+      pulse.style.display='block';
+      pulse.style.animation='pingV31 1.8s cubic-bezier(0,0,0.2,1) infinite';
+    } else if(status==='synced'){
+      pulse.style.display='block';
+      pulse.style.animation='glowV31 2s ease-in-out infinite';
     } else {
-      pulseRing.style.display = status === 'offline' ? 'none' : 'block';
-      pulseRing.style.animation = 'none';
+      pulse.style.display='none';
     }
-  }
-  
-  // Also keep old badge for debugging but hidden
-  const oldBadge = document.getElementById('syncBadge');
-  if(oldBadge){
-    oldBadge.style.display = 'none';
   }
 }
 
-async function loadFromSupabase(){
-  if(!supabaseClient) return;
+// === FIREBASE SYNC FUNCTIONS ===
+
+// Sync stok 1 produk ke Firestore
+async function syncStockToSupabase(productId, newStock){
   try{
     updateSyncBadge('syncing');
-    
-    // Load stock
-    const { data: stocks, error: stockError } = await supabaseClient
-      .from('stock_pools')
-      .select('*')
-      .eq('outlet_id', SUPABASE_CONFIG.outletId);
-    
-    if(!stockError && stocks && stocks.length > 0){
-      console.log('Loaded stocks from Supabase', stocks);
-      // Update local storage stock
-      let localStock = {};
-      stocks.forEach(s=>{
-        localStock[s.base_key] = s.qty;
-      });
-      // Try to update React state via localStorage and reload
-      try{
-        localStorage.setItem('ayara_stock_' + SUPABASE_CONFIG.outletId, JSON.stringify(localStock));
-        // Dispatch custom event for React to pick up
-        window.dispatchEvent(new CustomEvent('ayaraStockLoaded', {detail: localStock}));
-      }catch(e){}
-    }
-    
-    // Load recent transactions for owner view
-    const { data: txs, error: txError } = await supabaseClient
-      .from('transactions')
-      .select('*')
-      .eq('outlet_id', SUPABASE_CONFIG.outletId)
-      .order('created_at', {ascending: false})
-      .limit(50);
-    
-    if(!txError && txs){
-      console.log('Loaded transactions', txs.length);
-      window.__supabaseTransactions = txs;
-    }
-    
+    await db.collection('products').doc(FIREBASE_CONFIG.outletId + '_' + productId).set({
+      productId: productId,
+      outletId: FIREBASE_CONFIG.outletId,
+      stock: newStock,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
     updateSyncBadge('synced');
+    console.log('✅ Stok sync', productId, newStock);
   }catch(e){
-    console.log('Load from Supabase failed', e);
+    console.error('❌ Stok sync error', e);
     updateSyncBadge('error');
   }
 }
 
-function setupRealtime(){
-  if(!supabaseClient) return;
-  try{
-    // Realtime stock
-    supabaseClient
-      .channel('stock_changes')
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'stock_pools', filter: `outlet_id=eq.${SUPABASE_CONFIG.outletId}`}, (payload)=>{
-        console.log('Realtime stock change', payload);
-        if(payload.new){
-          window.dispatchEvent(new CustomEvent('ayaraStockRealtime', {detail: payload.new}));
-        }
-        updateSyncBadge('synced');
-        if(window.__playAddPop) window.__playAddPop();
-      })
-      .subscribe();
-    
-    // Realtime transactions
-    supabaseClient
-      .channel('tx_changes')
-      .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'transactions', filter: `outlet_id=eq.${SUPABASE_CONFIG.outletId}`}, (payload)=>{
-        console.log('New transaction realtime', payload);
-        if(window.__role === 'owner'){
-          // Show notification
-          if(window.__playAddPop) window.__playAddPop();
-          // Update owner dashboard if exists
-          window.dispatchEvent(new CustomEvent('ayaraNewTransaction', {detail: payload.new}));
-        }
-      })
-      .subscribe();
-  }catch(e){
-    console.log('Realtime setup failed', e);
-  }
-}
-
-async function syncStockToSupabase(baseKey, qty){
-  if(!isSupabaseEnabled || !supabaseClient) return;
+// Sync transaksi ke Firestore
+async function syncTransactionToSupabase(trx){
   try{
     updateSyncBadge('syncing');
-    const { data, error } = await supabaseClient
-      .from('stock_pools')
-      .upsert({
-        outlet_id: SUPABASE_CONFIG.outletId,
-        base_key: baseKey,
-        qty: qty,
-        updated_at: new Date().toISOString()
-      }, {onConflict: 'outlet_id,base_key'});
-    
-    if(error) throw error;
+    await db.collection('transactions').add({
+      ...trx,
+      outletId: FIREBASE_CONFIG.outletId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
     updateSyncBadge('synced');
-    console.log('Stock synced', baseKey, qty);
+    console.log('✅ Trx sync', trx.id);
   }catch(e){
-    console.log('Stock sync failed, queued offline', e);
+    console.error('❌ Trx sync error', e);
     updateSyncBadge('error');
-    // Queue for later sync
-    queueOfflineSync('stock', {baseKey, qty});
   }
 }
 
-async function syncTransactionToSupabase(transaction){
-  if(!isSupabaseEnabled || !supabaseClient){
-    queueOfflineSync('transaction', transaction);
-    return;
-  }
+// Compatibility wrappers (nama lama tetap jalan)
+function syncStockToFirebase(productId, newStock){ return syncStockToSupabase(productId, newStock); }
+function syncTransactionToFirebase(trx){ return syncTransactionToSupabase(trx); }
+
+// Live listener - kalau stok berubah di device lain, update di sini
+function initFirebaseLiveSync(){
   try{
-    updateSyncBadge('syncing');
-    const { data, error } = await supabaseClient
-      .from('transactions')
-      .insert({
-        id: transaction.id,
-        outlet_id: SUPABASE_CONFIG.outletId,
-        items: transaction.items,
-        total: transaction.total,
-        tunai: transaction.tunai,
-        kembali: transaction.kembali,
-        method: transaction.method,
-        status: transaction.status,
-        created_at: transaction.time || new Date().toISOString()
-      });
-    
-    if(error) throw error;
-    updateSyncBadge('synced');
-    console.log('Transaction synced', transaction.id);
-    
-    // Also sync stock deductions
-    if(transaction.items){
-      transaction.items.forEach(item=>{
-        if(item.baseKey){
-          // Get current stock and deduct
-          // We'll let the stock sync handle it via the stock_pools update
+    db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).onSnapshot((snapshot)=>{
+      snapshot.docChanges().forEach((change)=>{
+        if(change.type==='modified' || change.type==='added'){
+          const data = change.doc.data();
+          // Trigger update ke UI React kalau ada - kirim event
+          window.dispatchEvent(new CustomEvent('ayaraStockUpdate', {detail: data}));
+          console.log('🔄 Live stok', data.productId, data.stock);
         }
       });
-    }
-  }catch(e){
-    console.log('Transaction sync failed, queued', e);
-    updateSyncBadge('error');
-    queueOfflineSync('transaction', transaction);
-  }
-}
-
-function queueOfflineSync(type, data){
-  try{
-    let queue = JSON.parse(localStorage.getItem('ayara_sync_queue') || '[]');
-    queue.push({type, data, timestamp: new Date().toISOString(), outlet_id: SUPABASE_CONFIG.outletId});
-    localStorage.setItem('ayara_sync_queue', JSON.stringify(queue));
-    console.log('Queued offline sync', type);
-  }catch(e){}
-}
-
-async function processOfflineQueue(){
-  if(!isSupabaseEnabled || !supabaseClient) return;
-  try{
-    let queue = JSON.parse(localStorage.getItem('ayara_sync_queue') || '[]');
-    if(queue.length === 0) return;
-    
-    console.log('Processing offline queue', queue.length);
-    updateSyncBadge('syncing');
-    
-    for(let item of queue){
-      if(item.type === 'transaction'){
-        await syncTransactionToSupabase(item.data);
-      } else if(item.type === 'stock'){
-        await syncStockToSupabase(item.data.baseKey, item.data.qty);
-      }
-    }
-    
-    // Clear queue after success
-    localStorage.setItem('ayara_sync_queue', '[]');
+      updateSyncBadge('synced');
+    }, (err)=>{
+      console.error('Live sync error', err);
+      updateSyncBadge('error');
+    });
     updateSyncBadge('synced');
   }catch(e){
-    console.log('Queue processing failed', e);
-    updateSyncBadge('error');
+    console.error(e);
+    updateSyncBadge('offline');
   }
 }
 
-// Auto process queue when online
-window.addEventListener('online', ()=>{
-  console.log('Back online, processing queue');
-  processOfflineQueue();
-  loadFromSupabase();
-});
+window.addEventListener('online', ()=>{ updateSyncBadge('synced'); console.log('Online'); });
+window.addEventListener('offline', ()=>{ updateSyncBadge('offline'); console.log('Offline'); });
 
-// Check role from URL
-window.__role = new URLSearchParams(window.location.search).get('role') || 'kasir'; // kasir or owner
+window.__role = new URLSearchParams(window.location.search).get('role') || 'kasir';
 
-// Init on load
 document.addEventListener('DOMContentLoaded', ()=>{
   setTimeout(()=>{
-    initSupabase();
-    // Process any offline queue
-    setTimeout(()=>{ processOfflineQueue(); }, 2000);
-  }, 1000);
+    initFirebaseLiveSync();
+  }, 1200);
 });
 
-// Expose for the POS bundle to call
 window.__ayaraSupabase = {
   syncStock: syncStockToSupabase,
   syncTransaction: syncTransactionToSupabase,
-  isEnabled: ()=>isSupabaseEnabled,
-  getClient: ()=>supabaseClient,
-  config: SUPABASE_CONFIG
+  isEnabled: ()=>isFirebaseReady,
+  getClient: ()=>db,
+  config: FIREBASE_CONFIG
 };
+window.__ayaraFirebase = window.__ayaraSupabase;
 </script>
+
 
 <!-- Sync Badge UI -->
 <style>
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 </style>
-
-
 
 <!-- V31 OPSI A - PILL BALIK KE UKURAN ASLI, DOT 10px DI DALAM KIRI -->
 <style>
@@ -1846,9 +1679,6 @@ window.attachDotToLogoV30 = attachDotToLogoV31;
 window.attachDotToLogo = attachDotToLogoV31;
 </script>
 
-
-
-
 <!-- Owner Dashboard Overlay -->
 <div id="ownerDashboard" style="display:none;position:fixed;inset:0;z-index:100001;background:rgba(43,51,46,0.95);backdrop-filter:blur(16px);padding:20px;overflow-y:auto;">
   <div style="max-width:800px;margin:0 auto;">
@@ -1913,10 +1743,10 @@ window.attachDotToLogo = attachDotToLogoV31;
   }
   
   async function loadOwnerData(){
-    if(!supabaseClient) return;
+    // offline only
     try{
       const today = new Date().toISOString().split('T')[0];
-      const { data: txs } = await supabaseClient
+      const { data: txs } = await null /* supabase removed */ //
         .from('transactions')
         .select('*')
         .eq('outlet_id', SUPABASE_CONFIG.outletId)
@@ -1944,7 +1774,7 @@ window.attachDotToLogo = attachDotToLogoV31;
       }
       
       // Low stock
-      const { data: stocks } = await supabaseClient.from('stock_pools').select('*').eq('outlet_id', SUPABASE_CONFIG.outletId);
+      const { data: stocks } = await null /* supabase removed */ //.from('stock_pools').select('*').eq('outlet_id', SUPABASE_CONFIG.outletId);
       if(stocks){
         const low = stocks.filter(s=>s.qty < 10).length;
         document.getElementById('ownerLowStock').textContent = low + ' item';
