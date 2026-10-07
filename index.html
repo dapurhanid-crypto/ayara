@@ -255,9 +255,7 @@ div[data-testid="cat-row"] button {
   }
 }
 </style>
-<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-</head>
+<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style></head>
 <body>
 <div id="pinLock" style="position:fixed;inset:0;z-index:99999;background:#F8F6F1;display:flex;flex-direction:column;overflow:hidden;">
   <!-- TOP SECTION - Hijau Ayara (was orange) -->
@@ -740,44 +738,17 @@ document.addEventListener('DOMContentLoaded', ()=>{
 (function(){
   function finalPolish(){
     try{
-    // Header capsule only logotype
-    const headerInner = document.querySelector('.sticky.top-0.z-20 > div');
-    if(headerInner){
-      const right = headerInner.querySelector('.flex.items-center.gap-2');
-      if(right) right.style.display='none';
-      const badge = headerInner.querySelector('[class*="lg:inline-flex"]');
-      if(badge) badge.style.display='none';
-    }
-    // Category pills active
-    const catRow = document.querySelector('[data-testid="cat-row"]');
-    if(catRow){
-      catRow.querySelectorAll('button').forEach(btn=>{
-        const txt = btn.textContent || '';
-        // Detect active by dark background or aria
-        const isActive = btn.className.includes('bg-[#2B332E]') || btn.style.backgroundColor === 'rgb(43, 51, 46)' || txt.includes('Semua');
-        // We'll use a simple heuristic: if button has dark bg, add cat-active
-        if(btn.className.includes('bg-[#2B332E]') || btn.className.includes('bg-\[\#2B332E\]')){
-          btn.classList.add('cat-active');
-        }
-        // Add orange dot for active
-        if(btn.classList.contains('bg-[#2B332E]') || btn.className.includes('bg-[#2B332E]')){
-          if(!btn.querySelector('.orange-dot')){
-            const dot = document.createElement('span');
-            dot.className='orange-dot';
-            dot.style.cssText='display:inline-block;width:5px;height:5px;background:#F4A100;border-radius:50%;margin-left:6px;box-shadow:0 0 6px rgba(244,161,0,0.6);vertical-align:middle;';
-            // append if not already
-            if(!btn.textContent.includes('•')){
-              // btn.appendChild(dot);
-            }
-          }
-        }
-      });
-    }
+      const headerInner = document.querySelector('.sticky.top-0.z-20 > div');
+      if(headerInner){
+        const right = headerInner.querySelector('.flex.items-center.gap-2');
+        if(right) right.style.display='none';
+        const badge = headerInner.querySelector('[class*="lg:inline-flex"]');
+        if(badge) badge.style.display='none';
+      }
+    }catch(e){}
   }
-  try{ finalPolish(); }catch(e){ console.log('finalPolish skip', e); }
-  setTimeout(()=>{ try{ finalPolish(); }catch(e){} }, 2000);
-  // setInterval dihapus biar ga spam console
-
+  try{ finalPolish(); }catch(e){}
+  setTimeout(()=>{ try{ finalPolish(); }catch(e){} }, 1500);
 })();
 </script>
 
@@ -1306,9 +1277,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 })();
 </script>
 
-<!-- Firebase SDK - Ayara -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<!-- Firebase SDK - Ayara -->
 <script>
 // ===== AYARA FIREBASE CONFIG - SUDAH JADI =====
 
