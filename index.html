@@ -2038,5 +2038,86 @@ window.attachDotToLogo = attachDotToLogoV31;
 })();
 </script>
 
+
+<!-- FIX STOK PERSIST - Transaksi langsung ke-record ke localStorage, ga balik lagi pas refresh -->
+<script>
+(function(){
+  function ensureStockPersist(){
+    // Override syncStockToSupabase agar selalu save ke localStorage juga
+    if(window.__ayaraSupabase && window.__ayaraSupabase.syncStock && !window.__ayaraSupabase._fixed){
+      let orig = window.__ayaraSupabase.syncStock;
+      window.__ayaraSupabase.syncStock = async function(productId, newStock){
+        try{
+          // 1. Save ke localStorage dulu (biar refresh ga balik)
+          let current={};
+          try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) current=JSON.parse(c); }catch(e){}
+          current[productId]=newStock;
+          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(current));
+          // 2. Save ke window.__firebaseStockMap
+          if(!window.__firebaseStockMap) window.__firebaseStockMap={};
+          window.__firebaseStockMap[productId]=newStock;
+          // 3. Save ke global ac jika ada
+          try{ if(typeof ac!=='undefined'&&ac) ac[productId]=newStock; }catch(e){}
+          console.log('STOK PERSIST - localStorage + FirebaseMap', productId, newStock);
+        }catch(e){ console.error('Persist error', e); }
+        // 4. Baru save ke Firebase
+        try{ return await orig.call(this, productId, newStock); }catch(e){ console.error('Firebase sync fail but local saved', e); }
+      };
+      window.__ayaraSupabase._fixed=true;
+      console.log('Fix stok persist applied');
+    }
+    // Juga override syncStockToFirebase wrapper lama
+    if(window.syncStockToSupabase && !window.syncStockToSupabase._fixed){
+      let orig2=window.syncStockToSupabase;
+      window.syncStockToSupabase=async function(productId, newStock){
+        try{
+          let current={};
+          try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) current=JSON.parse(c); }catch(e){}
+          current[productId]=newStock;
+          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(current));
+          if(!window.__firebaseStockMap) window.__firebaseStockMap={};
+          window.__firebaseStockMap[productId]=newStock;
+        }catch(e){}
+        return orig2(productId, newStock);
+      };
+      window.syncStockToSupabase._fixed=true;
+    }
+  }
+  
+  // Jalankan setelah Firebase ready
+  setTimeout(ensureStockPersist, 2000);
+  setTimeout(ensureStockPersist, 4000);
+  setInterval(ensureStockPersist, 5000);
+  
+  // Juga intercept perubahan stok dari transaksi (patch n() setState)
+  // Kita override localStorage setiap ada perubahan transaksi dengan MutationObserver pada stok display
+  let lastStocks={};
+  setInterval(function(){
+    try{
+      // Baca current stocks dari React state jika ada (ac)
+      let current={};
+      try{ if(typeof ac!=='undefined'&&ac) current={...ac}; }catch(e){}
+      // Jika ada perubahan dari lastStocks, save ke localStorage
+      if(Object.keys(current).length>0){
+        let changed=false;
+        for(let k in current){
+          if(lastStocks[k]!==current[k]){ changed=true; break; }
+        }
+        if(changed || Object.keys(lastStocks).length===0){
+          let existing={};
+          try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) existing=JSON.parse(c); }catch(e){}
+          Object.assign(existing, current);
+          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(existing));
+          if(!window.__firebaseStockMap) window.__firebaseStockMap={};
+          Object.assign(window.__firebaseStockMap, current);
+          lastStocks={...current};
+          console.log('Auto persist stok dari ac', current);
+        }
+      }
+    }catch(e){}
+  }, 1000);
+})();
+</script>
+
 </body>
 </html>
