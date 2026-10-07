@@ -484,6 +484,291 @@ div[data-testid="cat-row"] button {
 })();
 </script>
 
+
+<script>
+(function(){
+  function restoreMissingBaseCards(){
+    const expectedBases = [
+      {key:'Ayam Kipas', name:'Ayam Kipas', priceLauk:12000, pricePaket:15000},
+      {key:'Ayam Bakar', name:'Ayam Bakar', priceLauk:17000, pricePaket:20000},
+      {key:'Kentaki Bekuah', name:'Kentaki Bekuah', priceLauk:9000, pricePaket:12000}
+    ];
+    
+    // Check if we're on Stok Bahan page
+    if(!document.body.innerHTML.includes('Stok Bahan')) return;
+    
+    // Find container that holds lauk cards - look for the grid
+    let container = null;
+    // Heuristic: find the div that contains LAUK badge
+    let laukBadges = Array.from(document.querySelectorAll('div')).filter(d=>d.textContent.trim()==='LAUK');
+    if(laukBadges.length>0){
+      // Parent grid
+      container = laukBadges[0].closest('div')?.parentElement?.parentElement;
+      // Try to find the grid container (flex or grid)
+      let el = laukBadges[0];
+      for(let i=0;i<8;i++){
+        if(!el.parentElement) break;
+        el = el.parentElement;
+        if(el.children.length>=1 && el.innerHTML.includes('Stok Bahan') === false){
+          // Check if this looks like card container
+          if(el.querySelector('[class*="LAUK"]')){
+            container = el;
+            // go one more up to get grid
+            if(el.parentElement && el.parentElement.children.length>=1){
+              // The grid might be the parent of cards
+            }
+          }
+        }
+      }
+    }
+    
+    // More robust: find the element that contains "0 porsi" and then its sibling grid
+    let totalEl = Array.from(document.querySelectorAll('*')).find(e=>e.textContent.includes('TOTAL LAUK UTAMA'));
+    if(totalEl){
+      let section = totalEl.closest('div')?.parentElement;
+      if(section){
+        // Look for cards after this section
+        let next = section.nextElementSibling;
+        while(next){
+          if(next.innerHTML && next.innerHTML.includes('LAUK')){
+            container = next;
+            break;
+          }
+          next = next.nextElementSibling;
+        }
+        // Also try to find grid inside main
+        if(!container){
+          let main = document.querySelector('main') || document.body;
+          let grids = main.querySelectorAll('div');
+          for(let g of grids){
+            if(g.children.length>=1 && g.innerHTML.includes('Ayam Kipas')){
+              container = g.parentElement;
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    // If we have container, check which bases are missing
+    let presentBases = [];
+    document.querySelectorAll('*').forEach(el=>{
+      let txt = el.textContent || '';
+      if(txt.includes('Ayam Kipas')) presentBases.push('Ayam Kipas');
+      if(txt.includes('Ayam Bakar') && el.textContent.trim().length < 50) presentBases.push('Ayam Bakar');
+      if(txt.includes('Kentaki Bekuah')) presentBases.push('Kentaki Bekuah');
+    });
+    presentBases = [...new Set(presentBases)];
+    console.log('Present bases:', presentBases);
+    
+    let missing = expectedBases.filter(b=>!presentBases.includes(b.key) || presentBases.filter(p=>p===b.key).length<2); // rough
+    
+    // Simpler: if total cards <3, recreate all 3
+    let cards = document.querySelectorAll('div').length;
+    let laukCards = Array.from(document.querySelectorAll('div')).filter(d=>{
+      return d.innerHTML.includes('Lauk Rp') && d.innerHTML.includes('Paket Rp');
+    });
+    console.log('Lauk cards found:', laukCards.length);
+    
+    if(laukCards.length < 3){
+      console.log('🔧 Fix: Rendering missing base cards, found only', laukCards.length);
+      // Find the parent that holds the single card
+      let firstCard = laukCards[0];
+      if(firstCard){
+        let gridParent = firstCard.parentElement;
+        // If gridParent has only 1 child, it's the grid
+        while(gridParent && gridParent.children.length===1 && gridParent.parentElement){
+          if(gridParent.parentElement.innerHTML.includes('Stok Bahan')) break;
+          gridParent = gridParent.parentElement;
+        }
+        // Now gridParent should be the grid container or its parent
+        let targetGrid = null;
+        // Try to find grid by looking up for a div that is after TOTAL LAUK section
+        let allDivs = Array.from(document.querySelectorAll('div'));
+        for(let d of allDivs){
+          if(d.innerHTML.includes('Ayam Kipas') && d.innerHTML.includes('0 porsi')===false){
+            // This is likely the card container's parent
+            targetGrid = d.parentElement;
+            if(targetGrid && targetGrid.children.length>=1){
+              break;
+            }
+          }
+        }
+        
+        // Fallback: create a new grid container and replace
+        if(laukCards.length===1){
+          let cardHTML = firstCard.outerHTML;
+          // Build 3 cards HTML
+          let newGridHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;">
+              ${expectedBases.map(base=>{
+                let stock = 0;
+                try{
+                  let map = window.__firebaseStockMap || JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}');
+                  stock = map[base.key] || 0;
+                }catch(e){ stock=0; }
+                return `
+                <div class="ayara-base-card" data-base-key="${base.key}" style="background:white;border-radius:20px;padding:16px;border:1px solid #F0EDE8;box-shadow:0 2px 12px rgba(0,0,0,0.04);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <span style="background:#F4A100;color:#2B332E;font-weight:800;font-size:10px;padding:4px 10px;border-radius:9999px;letter-spacing:0.05em;">LAUK</span>
+                    <span style="background:#F8F6F1;color:#2B332E;font-weight:800;font-size:13px;padding:4px 10px;border-radius:9999px;min-width:32px;text-align:center;">${stock}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:#F8F6F1;display:flex;align-items:center;justify-content:center;font-size:20px;">🍗</div>
+                    <div style="font-weight:800;font-size:15px;color:#2B332E;">${base.name}</div>
+                  </div>
+                  <div style="font-size:12px;color:#2B332E;opacity:0.6;margin-bottom:4px;">Lauk Rp ${base.priceLauk.toLocaleString('id-ID')} • Paket Rp ${base.pricePaket.toLocaleString('id-ID')}</div>
+                  <div style="font-size:10px;color:#2B332E;opacity:0.4;margin-bottom:16px;">Shared: Paket + Lauk pakai stok sama</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                    <input type="range" min="0" max="50" value="${stock}" data-base="${base.key}" class="ayara-stock-slider" style="flex:1;accent-color:#2B332E;height:6px;">
+                    <span class="ayara-stock-value" style="font-weight:800;font-size:14px;min-width:28px;text-align:center;background:#2B332E;color:white;padding:6px 10px;border-radius:9999px;">${stock}</span>
+                  </div>
+                  <div style="display:flex;gap:8px;">
+                    <button class="ayara-quick-btn" data-add="5" data-base="${base.key}" style="flex:1;background:#2B332E;color:white;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+5</button>
+                    <button class="ayara-quick-btn" data-add="10" data-base="${base.key}" style="flex:1;background:#F4A100;color:#2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;border:none;cursor:pointer;">+10</button>
+                    <button class="ayara-quick-btn" data-add="20" data-base="${base.key}" style="flex:1;background:#FFFBF4;color:#2B332E;border:1px solid #2B332E;border-radius:12px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;">+20</button>
+                  </div>
+                  <div style="margin-top:12px;display:flex;gap:8px;">
+                    <button class="ayara-set-btn" data-set="0" data-base="${base.key}" style="flex:1;background:transparent;color:#EF4444;border:1px dashed #EF4444;border-radius:10px;padding:8px;font-weight:700;font-size:11px;cursor:pointer;">Kosongkan</button>
+                    <button class="ayara-set-btn" data-set="50" data-base="${base.key}" style="flex:1;background:transparent;color:#2B332E;border:1px dashed #2B332E;opacity:0.3;border-radius:10px;padding:8px;font-weight:700;font-size:11px;cursor:pointer;">Full 50</button>
+                  </div>
+                </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+          
+          // Replace the parent that contains only 1 card
+          let parentToReplace = firstCard.parentElement;
+          // Go up until we find a container that is likely the grid (has only our card)
+          for(let i=0;i<5;i++){
+            if(parentToReplace && parentToReplace.children.length===1){
+              if(parentToReplace.parentElement && parentToReplace.parentElement.innerHTML.includes('Stok Bahan')){
+                break;
+              }
+              parentToReplace = parentToReplace.parentElement;
+            } else {
+              break;
+            }
+          }
+          
+          // Instead of complex replacement, just hide original and append new grid after TOTAL section
+          firstCard.style.display='none';
+          // Find insertion point - after the 3 stat cards
+          let statSection = document.querySelector('div:has(> div > div)') || document.body;
+          // Find element with "TOTAL LAUK UTAMA"
+          let totalCard = Array.from(document.querySelectorAll('div')).find(d=>d.textContent.includes('TOTAL LAUK UTAMA'));
+          if(totalCard){
+            let wrapper = totalCard.parentElement?.parentElement;
+            if(wrapper && wrapper.nextElementSibling){
+              let temp = document.createElement('div');
+              temp.innerHTML = newGridHTML;
+              wrapper.parentElement.insertBefore(temp.firstElementChild, wrapper.nextElementSibling.nextElementSibling || wrapper.nextElementSibling);
+            } else {
+              document.body.insertAdjacentHTML('beforeend', newGridHTML);
+            }
+          }
+          
+          // Attach listeners for new sliders
+          attachStockListeners();
+        }
+      }
+    }
+  }
+  
+  function attachStockListeners(){
+    document.querySelectorAll('.ayara-stock-slider').forEach(slider=>{
+      slider.addEventListener('input', (e)=>{
+        let val = e.target.value;
+        let base = e.target.getAttribute('data-base');
+        e.target.nextElementSibling.textContent = val;
+        // Update localStorage and Firebase immediately
+        try{
+          let map = {};
+          try{ map = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
+          map[base] = parseInt(val);
+          localStorage.setItem('ayara_firebase_stocks', JSON.stringify(map));
+          window.__firebaseStockMap = map;
+          // Sync to Firebase
+          if(window.__syncStockToSupabase){
+            window.__syncStockToSupabase(base, parseInt(val));
+          } else if(window.firebase){
+            try{
+              let db = firebase.firestore();
+              db.collection('products').doc('amd_pemurus_dalam_'+base).set({
+                productId: base,
+                baseKey: base,
+                stock: parseInt(val),
+                outletId: 'amd_pemurus_dalam',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, {merge:true});
+              console.log('✅ Stok', base, '->', val, 'synced to Firebase');
+            }catch(err){ console.error(err); }
+          }
+          // Update total
+          updateTotal();
+        }catch(err){ console.error(err); }
+      });
+    });
+    
+    document.querySelectorAll('.ayara-quick-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        let base = e.target.getAttribute('data-base');
+        let add = parseInt(e.target.getAttribute('data-add'));
+        let slider = document.querySelector(`.ayara-stock-slider[data-base="${base}"]`);
+        if(slider){
+          let newVal = Math.min(50, parseInt(slider.value) + add);
+          slider.value = newVal;
+          slider.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+      });
+    });
+    
+    document.querySelectorAll('.ayara-set-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        let base = e.target.getAttribute('data-base');
+        let setVal = parseInt(e.target.getAttribute('data-set'));
+        let slider = document.querySelector(`.ayara-stock-slider[data-base="${base}"]`);
+        if(slider){
+          slider.value = setVal;
+          slider.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+      });
+    });
+  }
+  
+  function updateTotal(){
+    try{
+      let map = {};
+      try{ map = JSON.parse(localStorage.getItem('ayara_firebase_stocks')||'{}'); }catch(e){}
+      let total = Object.values(map).reduce((a,b)=>a+b,0);
+      // Find total element
+      let totalEl = Array.from(document.querySelectorAll('*')).find(el=>el.textContent && el.textContent.includes('porsi') && el.parentElement?.textContent?.includes('TOTAL LAUK UTAMA'));
+      if(totalEl){
+        // The 0 porsi element
+        let parent = totalEl.parentElement;
+        if(parent){
+          let porsiEl = parent.querySelector('div') || parent;
+          // Actually find the 0 porsi
+          let all = parent.parentElement?.querySelectorAll('div');
+        }
+      }
+      // Simpler: find element that says "0 porsi"
+      document.querySelectorAll('*').forEach(el=>{
+        if(el.textContent && /^\d+\s+porsi$/.test(el.textContent.trim())){
+          el.textContent = total + ' porsi';
+        }
+      });
+    }catch(e){}
+  }
+  
+  setTimeout(restoreMissingBaseCards, 800);
+  setTimeout(restoreMissingBaseCards, 2000);
+  setTimeout(restoreMissingBaseCards, 4000);
+  new MutationObserver(()=>{ setTimeout(restoreMissingBaseCards, 500); }).observe(document.body, {childList:true, subtree:true});
+})();
+</script>
+
 </head>
 <body>
 <div id="pinLock" style="position:fixed;inset:0;z-index:99999;background:#F8F6F1;display:flex;flex-direction:column;overflow:hidden;">
