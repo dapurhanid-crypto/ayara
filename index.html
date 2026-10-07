@@ -1,123 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
-<script>
-// === AYARA PRELOADER - BLOCKING SYNC BEFORE REACT ===
-(function(){
-  const firebaseConfig = {
-    apiKey: "AIzaSyAqy37td4CNG8F6S7RXm6yEQstI1xdpS0o",
-    authDomain: "ayara-kasir2.firebaseapp.com",
-    projectId: "ayara-kasir2",
-    storageBucket: "ayara-kasir2.firebasestorage.app",
-    messagingSenderId: "361979869209",
-    appId: "1:361979869209:web:949ca7a7c77fe572de5288"
-  };
-  try{ // already initialized in preloader }catch(e){}
-  const db = window._ayaraDB || firebase.firestore();
-  const FIREBASE_CONFIG = { outletId: 'amd_pemurus_dalam' };
-  window._ayaraDB = db;
-  window._ayaraFirebaseConfig = FIREBASE_CONFIG;
-  
-  // Show loading overlay
-  const style = document.createElement('style');
-  style.textContent = '#ayaraPreloader{position:fixed;inset:0;background:#FFFBF4;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Nunito,sans-serif} #ayaraPreloader .logo{font-family:Pacifico,cursive;font-size:32px;color:#2B332E} #ayaraPreloader .sub{margin-top:12px;font-size:14px;color:#8A7D6E;font-weight:700}';
-  document.head.appendChild(style);
-  const loader = document.createElement('div');
-  loader.id = 'ayaraPreloader';
-  loader.innerHTML = '<div class="logo">ayara</div><div class="sub">🔄 Sync stok dari pusat...</div>';
-  document.documentElement.appendChild(loader);
-
-  // Override localStorage.getItem for products keys to inject Firebase stocks
-  const origGetItem = localStorage.getItem.bind(localStorage);
-  const origSetItem = localStorage.setItem.bind(localStorage);
-  window.__firebaseStockMap = {};
-  window.__firebaseStocksReady = false;
-
-  async function fetchStocks(){
-    try{
-      console.log('📥 PRELOAD: Fetch stok dari Firestore...');
-      let snap = await db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).get();
-      let map = {};
-      snap.forEach(doc=>{
-        let d = doc.data();
-        if(d.productId) map[d.productId] = d.stock;
-      });
-      window.__firebaseStockMap = map;
-      window.__firebaseStocksReady = true;
-      console.log('✅ PRELOAD Stok:', map);
-      return map;
-    }catch(e){
-      console.error('PRELOAD error', e);
-      window.__firebaseStocksReady = true;
-      return {};
-    }
-  }
-
-  // Patch getItem to return patched products
-  localStorage.getItem = function(key){
-    let val = origGetItem(key);
-    if(!val) return val;
-    if(['ayara_products','ayaraProducts','products','PRODUCTS'].includes(key) || key.includes('product')){
-      try{
-        let arr = JSON.parse(val);
-        if(Array.isArray(arr) && window.__firebaseStocksReady && Object.keys(window.__firebaseStockMap).length>0){
-          arr.forEach(p=>{
-            let pid = p.id || p.productId || p.sku;
-            if(window.__firebaseStockMap[pid] !== undefined){
-              p.stock = window.__firebaseStockMap[pid];
-            }
-          });
-          // Return patched JSON
-          return JSON.stringify(arr);
-        }
-      }catch(e){}
-    }
-    return val;
-  };
-
-  // Also patch JSON.parse for the hardcoded PRODUCTS array in bundle? We can monkey-patch Array creation by intercepting script execution? Too complex.
-  // Instead, we will after stocks ready, also patch window.PRODUCTS via polling before React mounts
-
-  fetchStocks().then((map)=>{
-    // After fetch, try to hide loader after 1s
-    setTimeout(()=>{
-      let el = document.getElementById('ayaraPreloader');
-      if(el) { el.style.opacity='0'; el.style.transition='opacity 0.4s'; setTimeout(()=>el.remove(), 400); }
-    }, 800);
-    
-    // Also store to localStorage for future offline
-    if(Object.keys(map).length>0){
-      // Try update all product keys in LS
-      ['ayara_products','ayaraProducts','products','PRODUCTS'].forEach(k=>{
-        try{
-          let raw = origGetItem(k);
-          if(!raw) return;
-          let arr = JSON.parse(raw);
-          if(Array.isArray(arr)){
-            let changed=false;
-            arr.forEach(p=>{
-              let pid = p.id || p.productId;
-              if(map[pid] !== undefined && p.stock !== map[pid]){
-                p.stock = map[pid];
-                changed=true;
-              }
-            });
-            if(changed) origSetItem(k, JSON.stringify(arr));
-          }
-        }catch(e){}
-      });
-    }
-  });
-
-  // Safety: remove loader after 5s even if fails
-  setTimeout(()=>{
-    let el = document.getElementById('ayaraPreloader');
-    if(el) el.remove();
-  }, 5000);
-})();
-</script>
-
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>React Artifact</title>
@@ -372,7 +255,257 @@ div[data-testid="cat-row"] button {
   }
 }
 </style>
-<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style></head>
+<style>input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}</style>
+<!-- Firebase SDK - Ayara - WORKING VERSION -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ===== AYARA FIREBASE - VERSI STABIL YANG UDAH CONNECT =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAqy37td4CNG8F6S7RXm6yEQstI1xdpS0o",
+  authDomain: "ayara-kasir2.firebaseapp.com",
+  projectId: "ayara-kasir2",
+  storageBucket: "ayara-kasir2.firebasestorage.app",
+  messagingSenderId: "361979869209",
+  appId: "1:361979869209:web:949ca7a7c77fe572de5288"
+};
+try{
+  if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+}catch(e){ console.log('Firebase init skip', e); }
+const db = firebase.firestore();
+console.log("✅ Firebase ready", firebaseConfig.projectId);
+
+const FIREBASE_CONFIG = {
+  outletId: 'amd_pemurus_dalam',
+  outletName: 'AMD Pemurus Dalam',
+  outletAddress: 'Jl. AMD Pemurus Dalam'
+};
+
+let isFirebaseReady = true;
+
+function updateSyncBadge(status){
+  const badge = document.querySelector('[class*="ayara"]');
+  const dot = document.getElementById('ayaraOnlineDotV31') || document.querySelector('#ayaraOnlineDotV31');
+  // Simple badge update
+  const el = document.querySelector('div:has(> div > span)'); 
+  let target = document.getElementById('ayaraOnlineBadge') || document.querySelector('[data-ayara-badge]');
+  // Create badge if not exists
+  if(!document.getElementById('ayaraSyncBadge')){
+    let badgeDiv = document.createElement('div');
+    badgeDiv.id = 'ayaraSyncBadge';
+    badgeDiv.style.cssText = 'position:fixed;top:14px;left:14px;z-index:99999;background:#2B332E;color:white;padding:6px 10px;border-radius:9999px;font-family:Nunito,sans-serif;font-size:11px;font-weight:800;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+    let dotEl = document.createElement('span');
+    dotEl.id = 'ayaraOnlineDotInnerV31';
+    dotEl.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#10B981;display:inline-block;';
+    badgeDiv.appendChild(dotEl);
+    let txt = document.createElement('span');
+    txt.id = 'ayaraSyncText';
+    txt.textContent = 'Online';
+    badgeDiv.appendChild(txt);
+    document.body.appendChild(badgeDiv);
+  }
+  const dotInner = document.getElementById('ayaraOnlineDotInnerV31');
+  const txtEl = document.getElementById('ayaraSyncText');
+  const configs = {
+    offline: { color: '#F4A100', text: 'Offline • Data lokal' },
+    connecting: { color: '#F4A100', text: 'Connecting...' },
+    syncing: { color: '#3B82F6', text: 'Syncing...' },
+    synced: { color: '#10B981', text: 'Online • Firebase' },
+    error: { color: '#EF4444', text: 'Sync Error' }
+  };
+  const cfg = configs[status] || configs.offline;
+  if(dotInner){ dotInner.style.background = cfg.color; }
+  if(txtEl){ txtEl.textContent = cfg.text; }
+}
+
+async function syncStockToSupabase(productId, newStock){
+  try{
+    updateSyncBadge('syncing');
+    window.__lastSyncProduct = productId;
+    window.__lastSyncTime = Date.now();
+    await db.collection('products').doc(FIREBASE_CONFIG.outletId + '_' + productId).set({
+      productId: productId,
+      stock: newStock,
+      outletId: FIREBASE_CONFIG.outletId,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
+    console.log('✅ Stok sync', productId, newStock);
+    updateSyncBadge('synced');
+  }catch(e){
+    console.error('❌ Stok sync error', e);
+    updateSyncBadge('error');
+  }
+}
+
+async function syncTransactionToSupabase(trx){
+  try{
+    updateSyncBadge('syncing');
+    await db.collection('transactions').doc(trx.id).set({
+      id: trx.id,
+      outletId: FIREBASE_CONFIG.outletId,
+      outletName: FIREBASE_CONFIG.outletName,
+      items: trx.items || [],
+      total: trx.total || 0,
+      method: trx.method || 'Tunai',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString()
+    });
+    console.log('✅ Trx sync', trx.id);
+    updateSyncBadge('synced');
+  }catch(e){
+    console.error('❌ Trx sync error', e);
+  }
+}
+
+async function loadStocksFromFirebase(){
+  try{
+    console.log('📥 Load stok dari Firestore...');
+    let snapshot = await db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).get();
+    let stockMap = {};
+    snapshot.forEach(doc=>{
+      let d = doc.data();
+      if(d.productId) stockMap[d.productId] = d.stock;
+    });
+    if(Object.keys(stockMap).length>0){
+      console.log('✅ Stok dari Firebase:', stockMap);
+      window.__firebaseStockMap = stockMap;
+      window.__firebaseStocksReady = true;
+      // Update localStorage
+      ['ayara_products','ayaraProducts','products','PRODUCTS'].forEach(k=>{
+        try{
+          let raw = localStorage.getItem(k);
+          if(!raw) return;
+          let arr = JSON.parse(raw);
+          if(Array.isArray(arr)){
+            arr.forEach(p=>{
+              let pid = p.id || p.productId;
+              if(stockMap[pid] !== undefined) p.stock = stockMap[pid];
+            });
+            localStorage.setItem(k, JSON.stringify(arr));
+          }
+        }catch(e){}
+      });
+      window.dispatchEvent(new CustomEvent('ayaraStocksLoaded', {detail: stockMap}));
+    }else{
+      console.log('ℹ️ Belum ada stok di Firestore');
+      window.__firebaseStockMap = {};
+      window.__firebaseStocksReady = true;
+    }
+  }catch(e){
+    console.error('Load stok error', e);
+    window.__firebaseStocksReady = true;
+  }
+}
+
+function initFirebaseLiveSync(){
+  try{
+    loadStocksFromFirebase();
+    db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).onSnapshot((snapshot)=>{
+      snapshot.docChanges().forEach((change)=>{
+        if(change.type==='modified' || change.type==='added'){
+          const data = change.doc.data();
+          if(!data || !data.productId) return;
+          // Skip self echo within 2s
+          if(window.__lastSyncProduct === data.productId && Date.now() - window.__lastSyncTime < 2000) return;
+          console.log('🔄 Live stok dari device lain', data.productId, data.stock);
+          
+          // Update localStorage
+          ['ayara_products','ayaraProducts','products','PRODUCTS'].forEach(k=>{
+            try{
+              let raw = localStorage.getItem(k);
+              if(!raw) return;
+              let arr = JSON.parse(raw);
+              if(Array.isArray(arr)){
+                let changed=false;
+                arr.forEach(p=>{
+                  let pid = p.id || p.productId || p.sku;
+                  if(pid===data.productId && p.stock !== data.stock){
+                    p.stock = data.stock;
+                    changed=true;
+                  }
+                });
+                if(changed) localStorage.setItem(k, JSON.stringify(arr));
+              }
+            }catch(e){}
+          });
+
+          // Show toast + update DOM text
+          try{
+            document.querySelectorAll('[data-product-id]').forEach(card=>{
+              let pid = card.getAttribute('data-product-id');
+              if(pid===data.productId){
+                // find stok text
+                let walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+                let node;
+                while(node = walker.nextNode()){
+                  if(node.nodeValue && /\d+\s*stok/i.test(node.nodeValue)){
+                    node.nodeValue = data.stock + ' stok';
+                  }
+                }
+              }
+            });
+            // Toast
+            let existing = document.getElementById('ayaraLiveToast');
+            if(existing) existing.remove();
+            let toast = document.createElement('div');
+            toast.id='ayaraLiveToast';
+            toast.textContent = '🔄 Stok '+data.productId+' jadi '+data.stock+' (dari kasir lain)';
+            toast.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#2B332E;color:white;padding:10px 16px;border-radius:9999px;font-family:Nunito,sans-serif;font-weight:700;font-size:12px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.25);';
+            document.body.appendChild(toast);
+            setTimeout(()=>toast.remove(), 3500);
+          }catch(e){}
+
+          window.dispatchEvent(new CustomEvent('ayaraStockUpdate', {detail: data}));
+        }
+      });
+      updateSyncBadge('synced');
+    }, (err)=>{
+      console.error('Live sync error', err);
+      updateSyncBadge('error');
+    });
+    updateSyncBadge('synced');
+  }catch(e){
+    console.error(e);
+    updateSyncBadge('offline');
+  }
+}
+
+// Init after 1s
+setTimeout(initFirebaseLiveSync, 1000);
+
+// Hook untuk tangkap transaksi dari app
+(function hookTransactions(){
+  // Watch localStorage for new transactions or stock changes
+  let lastProducts = '';
+  setInterval(()=>{
+    try{
+      let cur = localStorage.getItem('ayara_products') || localStorage.getItem('products') || '';
+      if(cur && cur !== lastProducts && lastProducts!==''){
+        try{
+          let oldArr = JSON.parse(lastProducts);
+          let newArr = JSON.parse(cur);
+          if(Array.isArray(oldArr) && Array.isArray(newArr)){
+            newArr.forEach((pNew)=>{
+              let pOld = oldArr.find(po=>(po.id||po.productId)===(pNew.id||pNew.productId));
+              if(pOld && pOld.stock !== pNew.stock){
+                console.log('📤 Stok berubah lokal', pNew.id, pNew.stock);
+                syncStockToSupabase(pNew.id||pNew.productId, pNew.stock);
+              }
+            });
+          }
+        }catch(e){}
+      }
+      lastProducts = cur;
+    }catch(e){}
+  }, 1200);
+})();
+
+window.__syncStockToSupabase = syncStockToSupabase;
+window.__syncTransactionToSupabase = syncTransactionToSupabase;
+console.log('🔥 Firebase sync V3 ready');
+</script>
+
+</head>
 <body>
 <div id="pinLock" style="position:fixed;inset:0;z-index:99999;background:#F8F6F1;display:flex;flex-direction:column;overflow:hidden;">
   <!-- TOP SECTION - Hijau Ayara (was orange) -->
@@ -1395,312 +1528,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 
 <!-- Firebase SDK - Ayara -->
-<script>
-// ===== AYARA FIREBASE CONFIG - SUDAH JADI =====
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAqy37td4CNG8F6S7RXm6yEQstI1xdpS0o",
-  authDomain: "ayara-kasir2.firebaseapp.com",
-  projectId: "ayara-kasir2",
-  storageBucket: "ayara-kasir2.firebasestorage.app",
-  messagingSenderId: "361979869209",
-  appId: "1:361979869209:web:949ca7a7c77fe572de5288"
-};
-// already initialized in preloader
-const db = window._ayaraDB || firebase.firestore();
-console.log("✅ Firebase ready", firebaseConfig.projectId);
-
-
-const FIREBASE_CONFIG = {
-  outletId: 'amd_pemurus_dalam',
-  outletName: 'AMD Pemurus Dalam',
-  outletAddress: 'Jl. AMD Pemurus Dalam'
-};
-
-let isFirebaseReady = true;
-let isSupabaseEnabled = true; // keep compat
-
-function updateSyncBadge(status){
-  const dot = document.getElementById('ayaraOnlineDotV31');
-  const dotInner = document.getElementById('ayaraOnlineDotInnerV31');
-  const pulse = document.getElementById('ayaraOnlinePulseV31');
-  if(!dot || !dotInner) return;
-  const configs = {
-    offline: { color: '#F4A100', pulse: false, title: 'Offline' },
-    connecting: { color: '#F4A100', pulse: true, title: 'Connecting...' },
-    syncing: { color: '#3B82F6', pulse: true, title: 'Syncing...' },
-    synced: { color: '#10B981', pulse: true, title: 'Online • Firebase Live' },
-    error: { color: '#EF4444', pulse: false, title: 'Sync Error' }
-  };
-  const c = configs[status] || configs.offline;
-  dotInner.style.background = c.color;
-  dot.title = c.title;
-  if(pulse){
-    pulse.style.background = c.color;
-    if(c.pulse){
-      pulse.style.display='block';
-      pulse.style.animation='pingV31 1.8s cubic-bezier(0,0,0.2,1) infinite';
-    } else if(status==='synced'){
-      pulse.style.display='block';
-      pulse.style.animation='glowV31 2s ease-in-out infinite';
-    } else {
-      pulse.style.display='none';
-    }
-  }
-}
-
-// === FIREBASE SYNC FUNCTIONS ===
-
-// Sync stok 1 produk ke Firestore
-async function syncStockToSupabase(productId, newStock){
-  try{
-    updateSyncBadge('syncing');
-    await db.collection('products').doc(FIREBASE_CONFIG.outletId + '_' + productId).set({
-      productId: productId,
-      outletId: FIREBASE_CONFIG.outletId,
-      stock: newStock,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, {merge:true});
-    updateSyncBadge('synced');
-    window.__lastSyncProduct = productId; window.__lastSyncTime = Date.now(); console.log('✅ Stok sync', productId, newStock);
-  }catch(e){
-    console.error('❌ Stok sync error', e);
-    updateSyncBadge('error');
-  }
-}
-
-// Sync transaksi ke Firestore
-async function syncTransactionToSupabase(trx){
-  try{
-    updateSyncBadge('syncing');
-    await db.collection('transactions').add({
-      ...trx,
-      outletId: FIREBASE_CONFIG.outletId,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    updateSyncBadge('synced');
-    console.log('✅ Trx sync', trx.id);
-  }catch(e){
-    console.error('❌ Trx sync error', e);
-    updateSyncBadge('error');
-  }
-}
-
-// Compatibility wrappers (nama lama tetap jalan)
-function syncStockToFirebase(productId, newStock){ return syncStockToSupabase(productId, newStock); }
-function syncTransactionToFirebase(trx){ return syncTransactionToSupabase(trx); }
-
-// Live listener - kalau stok berubah di device lain, update di sini + update UI
-// === FIX ARSITEKTUR: LOAD STOK DARI FIRESTORE PAS STARTUP ===
-async function loadStocksFromFirebase(){
-  try{
-    console.log('📥 Load stok dari Firestore...');
-    let snapshot = await db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).get();
-    let stockMap = {};
-    snapshot.forEach(doc=>{
-      let d = doc.data();
-      if(d.productId) stockMap[d.productId] = d.stock;
-    });
-    if(Object.keys(stockMap).length===0){
-      console.log('ℹ️ Belum ada stok di Firestore, skip');
-      return;
-    }
-    console.log('✅ Stok dari Firebase:', stockMap);
-    // Timpa localStorage
-    let keys = ['ayara_products','ayaraProducts','products','PRODUCTS'];
-    keys.forEach(k=>{
-      try{
-        let raw = localStorage.getItem(k);
-        if(!raw) return;
-        let arr = JSON.parse(raw);
-        if(Array.isArray(arr)){
-          arr.forEach(p=>{
-            let pid = p.id || p.productId;
-            if(stockMap[pid] !== undefined){
-              p.stock = stockMap[pid];
-            }
-          });
-          localStorage.setItem(k, JSON.stringify(arr));
-        }
-      }catch(e){}
-    });
-    // Timpa window.PRODUCTS kalau ada
-    try{
-      if(window.PRODUCTS){
-        window.PRODUCTS.forEach(p=>{
-          let pid = p.id || p.productId;
-          if(stockMap[pid] !== undefined) p.stock = stockMap[pid];
-        });
-      }
-    }catch(e){}
-    // Simpan ke window biar patch lain bisa pakai
-    window.__firebaseStockMap = stockMap;
-    window.dispatchEvent(new CustomEvent('ayaraStocksLoaded', {detail: stockMap}));
-  }catch(e){
-    console.error('Load stok error', e);
-  }
-}
-
-function initFirebaseLiveSync(){
-  try{
-    // 1. Load awal dulu biar stok bener pas buka
-    loadStocksFromFirebase().then(()=>{
-      console.log('✅ Initial stok loaded, starting live listener');
-    });
-
-    // 2. Live listener untuk update realtime
-    db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).onSnapshot((snapshot)=>{
-      snapshot.docChanges().forEach((change)=>{
-        const data = change.doc.data();
-        if(!data || !data.productId) return;
-        // Skip kalau ini adalah perubahan yang kita sendiri baru kirim (biar ga loop)
-        if(window.__lastSyncProduct === data.productId && Date.now() - window.__lastSyncTime < 2000){
-          return;
-        }
-        console.log('🔄 Live stok dari device lain:', data.productId, data.stock);
-        
-        // Update localStorage
-        try{
-          let keys = ['ayara_products','ayaraProducts','products','PRODUCTS'];
-          keys.forEach(k=>{
-            let raw = localStorage.getItem(k);
-            if(!raw) return;
-            try{
-              let arr = JSON.parse(raw);
-              if(Array.isArray(arr)){
-                let changed = false;
-                arr.forEach(p=>{
-                  let pid = p.id || p.productId || p.sku;
-                  if(pid===data.productId){
-                    if(p.stock !== data.stock){
-                      p.stock = data.stock;
-                      changed = true;
-                    }
-                  }
-                });
-                if(changed){
-                  localStorage.setItem(k, JSON.stringify(arr));
-                  console.log('✅ localStorage', k, 'updated', data.productId, data.stock);
-                }
-              }
-            }catch(e){}
-          });
-        }catch(e){}
-
-        // Update window.PRODUCTS
-        try{
-          if(window.PRODUCTS && Array.isArray(window.PRODUCTS)){
-            window.PRODUCTS.forEach(prod=>{
-              let pid = prod.id || prod.productId;
-              if(pid===data.productId && prod.stock !== data.stock){
-                prod.stock = data.stock;
-              }
-            });
-          }
-        }catch(e){}
-
-        // Update DOM langsung + kasih toast biar kasir tau
-        try{
-          let updated = false;
-          document.querySelectorAll('[data-product-id]').forEach(card=>{
-            let pid = card.getAttribute('data-product-id');
-            if(pid===data.productId || pid===String(data.productId)){
-              let stockEl = card.querySelector('.custom-stok-below');
-              if(stockEl){
-                stockEl.textContent = data.stock + ' stok';
-                stockEl.style.color = data.stock < 5 ? '#EF4444' : '';
-              }
-              if(data.stock<=0){
-                card.style.opacity='0.5';
-              }else{
-                card.style.opacity='1';
-              }
-              updated = true;
-            }
-          });
-          // Kasih notif kecil kalau ada update dari device lain
-          if(updated && document.visibilityState==='visible'){
-            // Toast kecil
-            let existing = document.getElementById('ayaraLiveToast');
-            if(existing) existing.remove();
-            let toast = document.createElement('div');
-            toast.id='ayaraLiveToast';
-            toast.textContent = '🔄 Stok '+data.productId+' update jadi '+data.stock+' dari kasir lain';
-            toast.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#2B332E;color:white;padding:10px 16px;border-radius:9999px;font-family:Nunito,sans-serif;font-weight:700;font-size:12px;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,0.25);';
-            document.body.appendChild(toast);
-            setTimeout(()=>toast.remove(), 3000);
-            // Force React re-render trick: dispatch event
-            window.dispatchEvent(new CustomEvent('ayaraStockUpdate', {detail: data}));
-          }
-        }catch(e){}
-      });
-      updateSyncBadge('synced');
-    }, (err)=>{
-      console.error('Live sync error', err);
-      updateSyncBadge('error');
-      if(err.code==='permission-denied'){
-        console.error('❌ FIRESTORE RULES BELUM DIBUKA! Buka Firebase Console > Firestore > Rules > ganti jadi allow read, write: if true');
-      }
-    });
-    updateSyncBadge('synced');
-  }catch(e){
-    console.error(e);
-    updateSyncBadge('offline');
-  }
-}
-
-// Patch: kalau transaksi sukses, kurangi stok lokal dan sync
-(function patchCheckout(){
-  function patchCartLogic(){
-    try{
-      // Cari fungsi yang ngurangin stok - kita hook via localStorage watch
-      let lastProducts = localStorage.getItem('ayara_products') || localStorage.getItem('products') || '';
-      setInterval(()=>{
-        let cur = localStorage.getItem('ayara_products') || localStorage.getItem('products') || '';
-        if(cur && cur !== lastProducts){
-          lastProducts = cur;
-          try{
-            let arr = JSON.parse(cur);
-            if(Array.isArray(arr)){
-              arr.forEach(p=>{
-                // kalau ada perubahan stok lokal, sync ke firebase
-                // kita simpan last known stok di window
-                if(!window.__lastStocks) window.__lastStocks = {};
-                if(window.__lastStocks[p.id] !== undefined && window.__lastStocks[p.id] !== p.stock){
-                  console.log('📤 Local stok berubah, sync ke Firebase', p.id, p.stock);
-                  syncStockToSupabase(p.id, p.stock);
-                }
-                window.__lastStocks[p.id] = p.stock;
-              });
-            }
-          }catch(e){}
-        }
-      }, 1500);
-    }catch(e){}
-  }
-  setTimeout(patchCartLogic, 2000);
-})();
-
-window.addEventListener('online', ()=>{ updateSyncBadge('synced'); console.log('Online'); });
-window.addEventListener('offline', ()=>{ updateSyncBadge('offline'); console.log('Offline'); });
-
-window.__role = new URLSearchParams(window.location.search).get('role') || 'kasir';
-
-document.addEventListener('DOMContentLoaded', ()=>{
-  setTimeout(()=>{
-    initFirebaseLiveSync();
-  }, 1200);
-});
-
-window.__ayaraSupabase = {
-  syncStock: syncStockToSupabase,
-  syncTransaction: syncTransactionToSupabase,
-  isEnabled: ()=>isFirebaseReady,
-  getClient: ()=>db,
-  config: FIREBASE_CONFIG
-};
-window.__ayaraFirebase = window.__ayaraSupabase;
-</script>
 
 
 <!-- Sync Badge UI -->
@@ -2041,89 +1869,5 @@ window.attachDotToLogo = attachDotToLogoV31;
   window.__loadOwnerData = loadOwnerData;
 })();
 </script>
-
-<script>
-// Patch PRODUCTS hardcode after React defines it
-(function(){
-  function patchHardcodeProducts(){
-    let map = window.__firebaseStockMap || {};
-    if(Object.keys(map).length===0) return;
-    let patched = 0;
-    // 1. window.PRODUCTS
-    try{
-      if(window.PRODUCTS && Array.isArray(window.PRODUCTS)){
-        window.PRODUCTS.forEach(p=>{
-          let pid = p.id || p.productId;
-          if(map[pid] !== undefined && p.stock !== map[pid]){
-            p.stock = map[pid];
-            patched++;
-          }
-        });
-      }
-    }catch(e){}
-    // 2. Try to find PRODUCTS in any global scope via scanning
-    try{
-      // Look for all arrays in window that look like products
-      for(let k in window){
-        try{
-          let v = window[k];
-          if(Array.isArray(v) && v.length>5 && v[0] && v[0].id && v[0].stock!==undefined){
-            v.forEach(p=>{
-              let pid = p.id || p.productId;
-              if(map[pid] !== undefined && p.stock !== map[pid]){
-                p.stock = map[pid];
-                patched++;
-              }
-            });
-          }
-        }catch(e){}
-      }
-    }catch(e){}
-    
-    // 3. Update DOM directly regardless of React state
-    try{
-      document.querySelectorAll('[data-product-id]').forEach(card=>{
-        let pid = card.getAttribute('data-product-id');
-        if(map[pid] !== undefined){
-          let el = card.querySelector('.custom-stok-below, [class*="stok"]');
-          if(el && el.textContent.includes('stok')){
-            el.textContent = map[pid] + ' stok';
-          }
-          // Also look for text like "12 stok" in card
-          card.childNodes.forEach(n=>{});
-          // Find any element containing "stok"
-          let walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
-          let node;
-          while(node = walker.nextNode()){
-            if(node.nodeValue && node.nodeValue.match(/\d+\s*stok/i)){
-              let pidMatch = pid;
-              if(map[pidMatch]!==undefined){
-                node.nodeValue = map[pidMatch] + ' stok';
-              }
-            }
-          }
-        }
-      });
-    }catch(e){}
-    
-    if(patched>0) console.log('✅ Patched hardcode PRODUCTS', patched);
-  }
-  
-  // Poll for 15 seconds every 500ms
-  let attempts = 0;
-  let interval = setInterval(()=>{
-    attempts++;
-    if(window.__firebaseStocksReady){
-      patchHardcodeProducts();
-    }
-    if(attempts>30) clearInterval(interval);
-  }, 500);
-  
-  // Also on stock update event
-  window.addEventListener('ayaraStocksLoaded', patchHardcodeProducts);
-  window.addEventListener('ayaraStockUpdate', patchHardcodeProducts);
-})();
-</script>
-
 </body>
 </html>
