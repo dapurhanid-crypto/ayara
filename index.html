@@ -1375,17 +1375,75 @@ async function syncTransactionToSupabase(trx){
 function syncStockToFirebase(productId, newStock){ return syncStockToSupabase(productId, newStock); }
 function syncTransactionToFirebase(trx){ return syncTransactionToSupabase(trx); }
 
-// Live listener - kalau stok berubah di device lain, update di sini
+// Live listener - kalau stok berubah di device lain, update di sini + update UI
 function initFirebaseLiveSync(){
   try{
     db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).onSnapshot((snapshot)=>{
       snapshot.docChanges().forEach((change)=>{
-        if(change.type==='modified' || change.type==='added'){
-          const data = change.doc.data();
-          // Trigger update ke UI React kalau ada - kirim event
-          window.dispatchEvent(new CustomEvent('ayaraStockUpdate', {detail: data}));
-          console.log('🔄 Live stok', data.productId, data.stock);
-        }
+        const data = change.doc.data();
+        if(!data || !data.productId) return;
+        console.log('🔄 Live stok', data.productId, data.stock);
+        
+        // 1. Update localStorage ayara_products if exists
+        try{
+          let keys = ['ayara_products','ayaraProducts','products','PRODUCTS'];
+          keys.forEach(k=>{
+            let raw = localStorage.getItem(k);
+            if(!raw) return;
+            try{
+              let arr = JSON.parse(raw);
+              if(Array.isArray(arr)){
+                let changed = false;
+                arr.forEach(p=>{
+                  if((p.id===data.productId || p.productId===data.productId || p.sku===data.productId)){
+                    if(p.stock !== data.stock){
+                      p.stock = data.stock;
+                      changed = true;
+                    }
+                  }
+                });
+                if(changed){
+                  localStorage.setItem(k, JSON.stringify(arr));
+                  console.log('✅ localStorage', k, 'updated', data.productId, data.stock);
+                }
+              }
+            }catch(e){}
+          });
+        }catch(e){}
+
+        // 2. Try update window.PRODUCTS global if exists
+        try{
+          if(window.PRODUCTS && Array.isArray(window.PRODUCTS)){
+            let prod = window.PRODUCTS.find(p=>p.id===data.productId || p.productId===data.productId);
+            if(prod && prod.stock !== data.stock){
+              prod.stock = data.stock;
+              console.log('✅ window.PRODUCTS updated');
+            }
+          }
+        }catch(e){}
+
+        // 3. Dispatch event for React to listen + force reload UI trick
+        window.dispatchEvent(new CustomEvent('ayaraStockUpdate', {detail: data}));
+
+        // 4. Update DOM card directly (angka stok di card)
+        try{
+          document.querySelectorAll('[data-product-id]').forEach(card=>{
+            let pid = card.getAttribute('data-product-id');
+            if(pid===data.productId || pid===String(data.productId)){
+              // find stock text inside
+              let stockEl = card.querySelector('.custom-stok-below');
+              if(stockEl){
+                stockEl.textContent = data.stock + ' stok';
+              }
+              // If habis, add overlay
+              if(data.stock<=0){
+                card.style.opacity='0.5';
+              }else{
+                card.style.opacity='1';
+              }
+            }
+          });
+        }catch(e){}
       });
       updateSyncBadge('synced');
     }, (err)=>{
@@ -1398,6 +1456,38 @@ function initFirebaseLiveSync(){
     updateSyncBadge('offline');
   }
 }
+
+// Patch: kalau transaksi sukses, kurangi stok lokal dan sync
+(function patchCheckout(){
+  function patchCartLogic(){
+    try{
+      // Cari fungsi yang ngurangin stok - kita hook via localStorage watch
+      let lastProducts = localStorage.getItem('ayara_products') || localStorage.getItem('products') || '';
+      setInterval(()=>{
+        let cur = localStorage.getItem('ayara_products') || localStorage.getItem('products') || '';
+        if(cur && cur !== lastProducts){
+          lastProducts = cur;
+          try{
+            let arr = JSON.parse(cur);
+            if(Array.isArray(arr)){
+              arr.forEach(p=>{
+                // kalau ada perubahan stok lokal, sync ke firebase
+                // kita simpan last known stok di window
+                if(!window.__lastStocks) window.__lastStocks = {};
+                if(window.__lastStocks[p.id] !== undefined && window.__lastStocks[p.id] !== p.stock){
+                  console.log('📤 Local stok berubah, sync ke Firebase', p.id, p.stock);
+                  syncStockToSupabase(p.id, p.stock);
+                }
+                window.__lastStocks[p.id] = p.stock;
+              });
+            }
+          }catch(e){}
+        }
+      }, 1500);
+    }catch(e){}
+  }
+  setTimeout(patchCartLogic, 2000);
+})();
 
 window.addEventListener('online', ()=>{ updateSyncBadge('synced'); console.log('Online'); });
 window.addEventListener('offline', ()=>{ updateSyncBadge('offline'); console.log('Offline'); });
