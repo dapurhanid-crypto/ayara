@@ -1,6 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+<script>
+// === AYARA PRELOADER - BLOCKING SYNC BEFORE REACT ===
+(function(){
+  const firebaseConfig = {
+    apiKey: "AIzaSyAqy37td4CNG8F6S7RXm6yEQstI1xdpS0o",
+    authDomain: "ayara-kasir2.firebaseapp.com",
+    projectId: "ayara-kasir2",
+    storageBucket: "ayara-kasir2.firebasestorage.app",
+    messagingSenderId: "361979869209",
+    appId: "1:361979869209:web:949ca7a7c77fe572de5288"
+  };
+  try{ // already initialized in preloader }catch(e){}
+  const db = window._ayaraDB || firebase.firestore();
+  const FIREBASE_CONFIG = { outletId: 'amd_pemurus_dalam' };
+  window._ayaraDB = db;
+  window._ayaraFirebaseConfig = FIREBASE_CONFIG;
+  
+  // Show loading overlay
+  const style = document.createElement('style');
+  style.textContent = '#ayaraPreloader{position:fixed;inset:0;background:#FFFBF4;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Nunito,sans-serif} #ayaraPreloader .logo{font-family:Pacifico,cursive;font-size:32px;color:#2B332E} #ayaraPreloader .sub{margin-top:12px;font-size:14px;color:#8A7D6E;font-weight:700}';
+  document.head.appendChild(style);
+  const loader = document.createElement('div');
+  loader.id = 'ayaraPreloader';
+  loader.innerHTML = '<div class="logo">ayara</div><div class="sub">🔄 Sync stok dari pusat...</div>';
+  document.documentElement.appendChild(loader);
+
+  // Override localStorage.getItem for products keys to inject Firebase stocks
+  const origGetItem = localStorage.getItem.bind(localStorage);
+  const origSetItem = localStorage.setItem.bind(localStorage);
+  window.__firebaseStockMap = {};
+  window.__firebaseStocksReady = false;
+
+  async function fetchStocks(){
+    try{
+      console.log('📥 PRELOAD: Fetch stok dari Firestore...');
+      let snap = await db.collection('products').where('outletId','==',FIREBASE_CONFIG.outletId).get();
+      let map = {};
+      snap.forEach(doc=>{
+        let d = doc.data();
+        if(d.productId) map[d.productId] = d.stock;
+      });
+      window.__firebaseStockMap = map;
+      window.__firebaseStocksReady = true;
+      console.log('✅ PRELOAD Stok:', map);
+      return map;
+    }catch(e){
+      console.error('PRELOAD error', e);
+      window.__firebaseStocksReady = true;
+      return {};
+    }
+  }
+
+  // Patch getItem to return patched products
+  localStorage.getItem = function(key){
+    let val = origGetItem(key);
+    if(!val) return val;
+    if(['ayara_products','ayaraProducts','products','PRODUCTS'].includes(key) || key.includes('product')){
+      try{
+        let arr = JSON.parse(val);
+        if(Array.isArray(arr) && window.__firebaseStocksReady && Object.keys(window.__firebaseStockMap).length>0){
+          arr.forEach(p=>{
+            let pid = p.id || p.productId || p.sku;
+            if(window.__firebaseStockMap[pid] !== undefined){
+              p.stock = window.__firebaseStockMap[pid];
+            }
+          });
+          // Return patched JSON
+          return JSON.stringify(arr);
+        }
+      }catch(e){}
+    }
+    return val;
+  };
+
+  // Also patch JSON.parse for the hardcoded PRODUCTS array in bundle? We can monkey-patch Array creation by intercepting script execution? Too complex.
+  // Instead, we will after stocks ready, also patch window.PRODUCTS via polling before React mounts
+
+  fetchStocks().then((map)=>{
+    // After fetch, try to hide loader after 1s
+    setTimeout(()=>{
+      let el = document.getElementById('ayaraPreloader');
+      if(el) { el.style.opacity='0'; el.style.transition='opacity 0.4s'; setTimeout(()=>el.remove(), 400); }
+    }, 800);
+    
+    // Also store to localStorage for future offline
+    if(Object.keys(map).length>0){
+      // Try update all product keys in LS
+      ['ayara_products','ayaraProducts','products','PRODUCTS'].forEach(k=>{
+        try{
+          let raw = origGetItem(k);
+          if(!raw) return;
+          let arr = JSON.parse(raw);
+          if(Array.isArray(arr)){
+            let changed=false;
+            arr.forEach(p=>{
+              let pid = p.id || p.productId;
+              if(map[pid] !== undefined && p.stock !== map[pid]){
+                p.stock = map[pid];
+                changed=true;
+              }
+            });
+            if(changed) origSetItem(k, JSON.stringify(arr));
+          }
+        }catch(e){}
+      });
+    }
+  });
+
+  // Safety: remove loader after 5s even if fails
+  setTimeout(()=>{
+    let el = document.getElementById('ayaraPreloader');
+    if(el) el.remove();
+  }, 5000);
+})();
+</script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>React Artifact</title>
@@ -1277,8 +1394,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
 })();
 </script>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <!-- Firebase SDK - Ayara -->
 <script>
 // ===== AYARA FIREBASE CONFIG - SUDAH JADI =====
@@ -1291,8 +1406,8 @@ const firebaseConfig = {
   messagingSenderId: "361979869209",
   appId: "1:361979869209:web:949ca7a7c77fe572de5288"
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+// already initialized in preloader
+const db = window._ayaraDB || firebase.firestore();
 console.log("✅ Firebase ready", firebaseConfig.projectId);
 
 
@@ -1926,5 +2041,89 @@ window.attachDotToLogo = attachDotToLogoV31;
   window.__loadOwnerData = loadOwnerData;
 })();
 </script>
+
+<script>
+// Patch PRODUCTS hardcode after React defines it
+(function(){
+  function patchHardcodeProducts(){
+    let map = window.__firebaseStockMap || {};
+    if(Object.keys(map).length===0) return;
+    let patched = 0;
+    // 1. window.PRODUCTS
+    try{
+      if(window.PRODUCTS && Array.isArray(window.PRODUCTS)){
+        window.PRODUCTS.forEach(p=>{
+          let pid = p.id || p.productId;
+          if(map[pid] !== undefined && p.stock !== map[pid]){
+            p.stock = map[pid];
+            patched++;
+          }
+        });
+      }
+    }catch(e){}
+    // 2. Try to find PRODUCTS in any global scope via scanning
+    try{
+      // Look for all arrays in window that look like products
+      for(let k in window){
+        try{
+          let v = window[k];
+          if(Array.isArray(v) && v.length>5 && v[0] && v[0].id && v[0].stock!==undefined){
+            v.forEach(p=>{
+              let pid = p.id || p.productId;
+              if(map[pid] !== undefined && p.stock !== map[pid]){
+                p.stock = map[pid];
+                patched++;
+              }
+            });
+          }
+        }catch(e){}
+      }
+    }catch(e){}
+    
+    // 3. Update DOM directly regardless of React state
+    try{
+      document.querySelectorAll('[data-product-id]').forEach(card=>{
+        let pid = card.getAttribute('data-product-id');
+        if(map[pid] !== undefined){
+          let el = card.querySelector('.custom-stok-below, [class*="stok"]');
+          if(el && el.textContent.includes('stok')){
+            el.textContent = map[pid] + ' stok';
+          }
+          // Also look for text like "12 stok" in card
+          card.childNodes.forEach(n=>{});
+          // Find any element containing "stok"
+          let walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+          let node;
+          while(node = walker.nextNode()){
+            if(node.nodeValue && node.nodeValue.match(/\d+\s*stok/i)){
+              let pidMatch = pid;
+              if(map[pidMatch]!==undefined){
+                node.nodeValue = map[pidMatch] + ' stok';
+              }
+            }
+          }
+        }
+      });
+    }catch(e){}
+    
+    if(patched>0) console.log('✅ Patched hardcode PRODUCTS', patched);
+  }
+  
+  // Poll for 15 seconds every 500ms
+  let attempts = 0;
+  let interval = setInterval(()=>{
+    attempts++;
+    if(window.__firebaseStocksReady){
+      patchHardcodeProducts();
+    }
+    if(attempts>30) clearInterval(interval);
+  }, 500);
+  
+  // Also on stock update event
+  window.addEventListener('ayaraStocksLoaded', patchHardcodeProducts);
+  window.addEventListener('ayaraStockUpdate', patchHardcodeProducts);
+})();
+</script>
+
 </body>
 </html>
