@@ -1874,5 +1874,152 @@ window.attachDotToLogo = attachDotToLogoV31;
   window.__loadOwnerData = loadOwnerData;
 })();
 </script>
+
+<!-- FIX STOK BISA DITAMBAH & GA BALIK LAGI - Untuk file FIREBASE-1-KASIR-EASIEST -->
+<script>
+(function(){
+  console.log('FIX STOK EASIEST loading...');
+  
+  function saveStock(baseKey, qty){
+    try{
+      // 1. localStorage
+      let current={};
+      try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) current=JSON.parse(c); }catch(e){}
+      current[baseKey]=qty;
+      localStorage.setItem('ayara_firebase_stocks', JSON.stringify(current));
+      // 2. window.__firebaseStockMap
+      if(!window.__firebaseStockMap) window.__firebaseStockMap={};
+      window.__firebaseStockMap[baseKey]=qty;
+      // 3. timestamp
+      let ts={};
+      try{ let t=localStorage.getItem('ayara_stok_timestamp'); if(t) ts=JSON.parse(t); }catch(e){}
+      ts[baseKey]=Date.now();
+      localStorage.setItem('ayara_stok_timestamp', JSON.stringify(ts));
+      console.log('STOK SAVE', baseKey, qty);
+    }catch(e){ console.error('Save fail', e); }
+    
+    // 4. Firebase
+    try{
+      if(window.__ayaraSupabase && window.__ayaraSupabase.syncStock){
+        window.__ayaraSupabase.syncStock(baseKey, qty);
+      } else if(window.syncStockToSupabase){
+        window.syncStockToSupabase(baseKey, qty);
+      } else if(window.syncStockToFirebase){
+        window.syncStockToFirebase(baseKey, qty);
+      }
+      // Also direct Firestore
+      if(window.firebase && firebase.firestore){
+        let db=firebase.firestore();
+        db.collection('products').doc('amd_pemurus_dalam_'+baseKey).set({
+          productId: baseKey,
+          baseKey: baseKey,
+          stock: qty,
+          outletId: 'amd_pemurus_dalam',
+          outletName: 'AMD Pemurus Dalam',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, {merge:true}).then(function(){ console.log('Firebase saved', baseKey, qty); }).catch(function(e){ console.warn('Firebase save fail', e); });
+      }
+    }catch(e){ console.warn('Firebase sync fail', e); }
+  }
+  
+  // Patch input onChange di Stok Bahan - override n()
+  // Kita akan watch perubahan di DOM dan save
+  function patchStokInputs(){
+    // Cari semua input number di Stok Bahan page
+    let inputs=document.querySelectorAll('input[type="number"]');
+    inputs.forEach(function(input){
+      if(input.dataset.patched) return;
+      // Cek apakah ini input stok (di dalam card LAUK)
+      let card=input.closest('div[class*="rounded-[24px]"]');
+      if(!card) return;
+      let titleEl=card.querySelector('h3');
+      if(!titleEl) return;
+      let baseKey=titleEl.textContent.trim();
+      if(!['Ayam Kipas','Ayam Bakar','Kentaki Bekuah'].includes(baseKey)) return;
+      
+      input.dataset.patched='1';
+      // Simpan original onChange
+      let origOnChange=input.onchange;
+      
+      input.addEventListener('change', function(e){
+        let v=parseInt(e.target.value)||0;
+        v=Math.max(0, v);
+        saveStock(baseKey, v);
+      });
+      input.addEventListener('blur', function(e){
+        let v=parseInt(e.target.value)||0;
+        v=Math.max(0, v);
+        saveStock(baseKey, v);
+      });
+    });
+    
+    // Patch tombol + dan -
+    // Di file ini tidak ada +1 +5, hanya input number, tapi kita tetap patch quick buttons jika ada
+    document.querySelectorAll('button').forEach(function(btn){
+      if(btn.dataset.patched) return;
+      let text=btn.textContent.trim();
+      if(['+1','+5','-1','-5','0','+10','+20'].includes(text) || text.includes('+')){
+        let card=btn.closest('div[class*="rounded-[24px]"]');
+        if(!card) return;
+        let titleEl=card.querySelector('h3');
+        if(!titleEl) return;
+        let baseKey=titleEl.textContent.trim();
+        if(!['Ayam Kipas','Ayam Bakar','Kentaki Bekuah'].includes(baseKey)) return;
+        btn.dataset.patched='1';
+        btn.addEventListener('click', function(){
+          setTimeout(function(){
+            let input=card.querySelector('input[type="number"]');
+            if(input){
+              let v=parseInt(input.value)||0;
+              saveStock(baseKey, v);
+            }
+          }, 200);
+        });
+      }
+    });
+  }
+  
+  // Juga patch transaction - saat transaksi LUNAS, save stok yang baru ke localStorage
+  function patchTransaction(){
+    if(window.__ayaraSupabase && window.__ayaraSupabase.syncStock && !window.__ayaraSupabase._easiestFixed){
+      let orig=window.__ayaraSupabase.syncStock;
+      window.__ayaraSupabase.syncStock=function(productId, newStock){
+        saveStock(productId, newStock);
+        try{ return orig.call(this, productId, newStock); }catch(e){}
+      };
+      window.__ayaraSupabase._easiestFixed=true;
+    }
+  }
+  
+  // Jalankan patch secara berkala
+  setInterval(patchStokInputs, 1000);
+  setInterval(patchTransaction, 2000);
+  setTimeout(patchStokInputs, 1500);
+  setTimeout(patchTransaction, 1500);
+  
+  // Juga: saat stok berubah di memory, auto-save
+  // Kita override localStorage setiap ada perubahan di window.__firebaseStockMap
+  let lastMap={};
+  setInterval(function(){
+    try{
+      let current={};
+      try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) current=JSON.parse(c); }catch(e){}
+      // Jika ada perubahan dari __firebaseStockMap
+      if(window.__firebaseStockMap){
+        for(let k in window.__firebaseStockMap){
+          if(lastMap[k]!==window.__firebaseStockMap[k]){
+            current[k]=window.__firebaseStockMap[k];
+          }
+        }
+        localStorage.setItem('ayara_firebase_stocks', JSON.stringify(current));
+        lastMap={...window.__firebaseStockMap};
+      }
+    }catch(e){}
+  }, 1000);
+  
+  console.log('FIX STOK EASIEST ready');
+})();
+</script>
+
 </body>
 </html>
