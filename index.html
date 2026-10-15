@@ -2192,5 +2192,725 @@ window.attachDotToLogo = attachDotToLogoV31;
 })();
 </script>
 
+
+<!-- HISTORI STOK PROFESIONAL - LOG + UI TIMELINE + EXPORT -->
+<style>
+#ayaraHistoryBtn{
+  display:flex; align-items:center; gap:8px;
+  background:#2B332E; color:white; border:none;
+  height:40px; padding:0 16px; border-radius:9999px;
+  font-weight:800; font-size:12px; cursor:pointer;
+  transition: all 0.2s;
+}
+#ayaraHistoryBtn:hover{ background:#1F2721; transform:translateY(-1px); }
+#ayaraHistoryModal{
+  position:fixed; inset:0; z-index:10002; display:none;
+  align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.5); backdrop-filter:blur(6px);
+}
+#ayaraHistoryModal.show{ display:flex; }
+.ayara-history-box{
+  background:white; border-radius:24px; width:95%; max-width:560px;
+  max-height:85vh; display:flex; flex-direction:column;
+  box-shadow:0 24px 80px rgba(0,0,0,0.25); animation: ayaraSlideUp 0.3s ease;
+  overflow:hidden;
+}
+.ayara-history-header{
+  padding:20px 24px 16px; border-bottom:1px solid #F1EDE8;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.ayara-history-header h3{ font-weight:900; font-size:16px; color:#2B332E; margin:0; }
+.ayara-history-close{
+  width:36px; height:36px; border-radius:50%; border:none;
+  background:#F6F1EB; color:#2B332E; cursor:pointer; font-weight:800;
+  display:flex; align-items:center; justify-content:center;
+}
+.ayara-history-filters{
+  padding:12px 24px; display:flex; gap:8px; overflow-x:auto;
+  border-bottom:1px solid #F1EDE8; background:#FCFBF9;
+}
+.ayara-filter-chip{
+  white-space:nowrap; padding:6px 14px; border-radius:9999px;
+  border:1px solid #EDE9E3; background:white; font-weight:700;
+  font-size:11px; cursor:pointer; transition: all 0.2s; color:#2B332E;
+}
+.ayara-filter-chip.active{ background:#2B332E; color:white; border-color:#2B332E; }
+.ayara-history-list{
+  flex:1; overflow-y:auto; padding:8px 0;
+}
+.ayara-history-item{
+  padding:14px 24px; display:flex; gap:12px; border-bottom:1px solid #F8F5F1;
+  transition: background 0.2s;
+}
+.ayara-history-item:hover{ background:#FCFBF9; }
+.ayara-history-icon{
+  width:40px; height:40px; border-radius:12px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; font-weight:900;
+}
+.ayara-history-icon.bakar{ background:#FFF3E0; color:#E65100; }
+.ayara-history-icon.kipas{ background:#E8F5E9; color:#2E7D32; }
+.ayara-history-icon.kentaki{ background:#FFF8E1; color:#F9A825; }
+.ayara-history-content{ flex:1; min-width:0; }
+.ayara-history-base{ font-weight:800; font-size:13px; color:#2B332E; }
+.ayara-history-change{ font-size:12px; color:#6B7280; margin-top:2px; }
+.ayara-history-change b{ color:#2B332E; }
+.ayara-history-change .delta-plus{ color:#2E7D32; font-weight:800; }
+.ayara-history-change .delta-minus{ color:#C62828; font-weight:800; }
+.ayara-history-meta{ font-size:11px; color:#9CA3AF; margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
+.ayara-history-footer{
+  padding:14px 24px; border-top:1px solid #F1EDE8; background:#FCFBF9;
+  display:flex; gap:10px;
+}
+.ayara-history-footer button{
+  flex:1; height:40px; border-radius:9999px; border:none;
+  font-weight:800; font-size:12px; cursor:pointer;
+}
+.ayara-history-export{ background:#F4A100; color:#2B332E; }
+.ayara-history-clear{ background:#F6F1EB; color:#2B332E; }
+</style>
+
+<div id="ayaraHistoryModal">
+  <div class="ayara-history-box">
+    <div class="ayara-history-header">
+      <h3>📜 Histori Stok</h3>
+      <button class="ayara-history-close" id="ayaraHistoryClose">✕</button>
+    </div>
+    <div class="ayara-history-filters" id="ayaraHistoryFilters">
+      <button class="ayara-filter-chip active" data-filter="all">Semua</button>
+      <button class="ayara-filter-chip" data-filter="Ayam Bakar">Ayam Bakar</button>
+      <button class="ayara-filter-chip" data-filter="Ayam Kipas">Ayam Kipas</button>
+      <button class="ayara-filter-chip" data-filter="Kentaki Bekuah">Kentaki</button>
+    </div>
+    <div class="ayara-history-list" id="ayaraHistoryList">
+      <div style="padding:40px 24px; text-align:center; color:#9CA3AF; font-size:13px;">Memuat histori...</div>
+    </div>
+    <div class="ayara-history-footer">
+      <button class="ayara-history-clear" id="ayaraHistoryClearBtn">Hapus Histori</button>
+      <button class="ayara-history-export" id="ayaraHistoryExportBtn">Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  console.log('📜 Histori Stok Profesional - AMD Pemurus Dalam');
+  
+  const OUTLET_ID = 'amd_pemurus_dalam';
+  const OUTLET_NAME = 'AMD Pemurus Dalam';
+  const HISTORY_KEY = 'ayara_stock_history';
+  const MAX_HISTORY = 200;
+  
+  function getHistory(){
+    try{
+      let h = JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+      return Array.isArray(h) ? h : [];
+    }catch(e){ return []; }
+  }
+  
+  function saveHistory(history){
+    try{
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+    }catch(e){ console.error('Gagal save history', e); }
+  }
+  
+  function formatTime(ts){
+    try{
+      let d = new Date(ts);
+      return d.toLocaleString('id-ID', {
+        day:'2-digit', month:'short', year:'numeric',
+        hour:'2-digit', minute:'2-digit', second:'2-digit',
+        timeZone:'Asia/Makassar'
+      }) + ' WITA';
+    }catch(e){ return new Date(ts).toLocaleString('id-ID'); }
+  }
+  
+  function addHistoryLog(base, oldVal, newVal, pinUsed){
+    let now = Date.now();
+    let delta = newVal - oldVal;
+    let log = {
+      id: 'log_'+now+'_'+Math.random().toString(36).substr(2,5),
+      timestamp: now,
+      outletId: OUTLET_ID,
+      outletName: OUTLET_NAME,
+      base: base,
+      old: oldVal,
+      new: newVal,
+      delta: delta,
+      pin: pinUsed || '1111',
+      pinUser: 'Manager ('+ (pinUsed||'1111') +')',
+      device: navigator.userAgent.includes('Mobile') ? 'HP Kasir' : 'Tablet Kasir',
+      syncStatus: 'local'
+    };
+    
+    let history = getHistory();
+    history.unshift(log);
+    saveHistory(history);
+    
+    // Sync ke Firebase jika online
+    try{
+      if(window.firebase && window.firebase.firestore){
+        let docId = OUTLET_ID+'_'+now;
+        window.firebase.firestore().collection('stock_history').doc(docId).set({
+          ...log,
+          createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+          syncStatus: 'synced'
+        }).then(()=>{
+          // Update syncStatus
+          let h = getHistory();
+          let idx = h.findIndex(x=>x.id===log.id);
+          if(idx>=0){ h[idx].syncStatus='synced'; saveHistory(h); }
+        }).catch(()=>{});
+      }
+      if(window.__ayaraSupabase && window.__ayaraSupabase.logHistory){
+        window.__ayaraSupabase.logHistory(log);
+      }
+    }catch(e){ console.log('Offline, histori disimpan lokal', e); }
+    
+    console.log('📜 Histori:', base, oldVal+'→'+newVal, 'Δ'+(delta>0?'+':'')+delta);
+    return log;
+  }
+  
+  // Hook ke saveStock yang sudah ada
+  const originalSaveStock = window.saveStockHistoryHook || null;
+  window.saveStockWithHistory = function(key, qty, oldQty, pinUsed){
+    // Simpan stok (fungsi asli)
+    try{
+      let cur={};
+      try{ let c=localStorage.getItem('ayara_firebase_stocks'); if(c) cur=JSON.parse(c); }catch(e){}
+      cur[key]=qty;
+      localStorage.setItem('ayara_firebase_stocks', JSON.stringify(cur));
+      if(!window.__firebaseStockMap) window.__firebaseStockMap={};
+      window.__firebaseStockMap[key]=qty;
+    }catch(e){}
+    try{
+      if(window.__ayaraSupabase && window.__ayaraSupabase.syncStock) window.__ayaraSupabase.syncStock(key, qty);
+      if(window.firebase && window.firebase.firestore){
+        window.firebase.firestore().collection('products').doc(OUTLET_ID+'_'+key).set({
+          productId: key, baseKey: key, stock: qty,
+          outletId: OUTLET_ID, outletName: OUTLET_NAME,
+          updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
+        }, {merge:true});
+      }
+    }catch(e){}
+    
+    // Tambah histori
+    if(oldQty!==undefined && oldQty!==qty){
+      addHistoryLog(key, oldQty, qty, pinUsed);
+    }
+  };
+  
+  function renderHistory(filter='all'){
+    let listEl = document.getElementById('ayaraHistoryList');
+    if(!listEl) return;
+    
+    let history = getHistory();
+    if(filter!=='all'){
+      history = history.filter(h=>h.base===filter);
+    }
+    
+    if(history.length===0){
+      listEl.innerHTML = '<div style="padding:40px 24px; text-align:center; color:#9CA3AF;"><div style="font-size:32px; margin-bottom:8px;">📭</div><div style="font-weight:700; font-size:13px;">Belum ada histori</div><div style="font-size:11px; margin-top:4px;">Histori akan muncul setelah ada perubahan stok</div></div>';
+      return;
+    }
+    
+    let html = '';
+    history.slice(0, 100).forEach(log=>{
+      let iconClass = 'bakar';
+      let iconEmoji = '🔥';
+      if(log.base.includes('Kipas')){ iconClass='kipas'; iconEmoji='🪭'; }
+      else if(log.base.includes('Kentaki')){ iconClass='kentaki'; iconEmoji='🍗'; }
+      
+      let deltaStr = (log.delta>0?'+':'')+log.delta;
+      let deltaClass = log.delta>0 ? 'delta-plus' : (log.delta<0 ? 'delta-minus' : '');
+      
+      html += `
+        <div class="ayara-history-item">
+          <div class="ayara-history-icon ${iconClass}">${iconEmoji}</div>
+          <div class="ayara-history-content">
+            <div class="ayara-history-base">${log.base}</div>
+            <div class="ayara-history-change">
+              <b>${log.old} → ${log.new} porsi</b> <span class="${deltaClass}">(${deltaStr})</span>
+            </div>
+            <div class="ayara-history-meta">
+              <span>🕒 ${formatTime(log.timestamp)}</span>
+              <span>👤 ${log.pinUser}</span>
+              <span>📍 ${log.device}</span>
+              <span>${log.syncStatus==='synced' ? '☁️ Synced' : '📱 Lokal'}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    
+    listEl.innerHTML = html;
+  }
+  
+  function exportCSV(){
+    let history = getHistory();
+    if(history.length===0){ alert('Belum ada histori untuk di-export'); return; }
+    
+    let csv = 'Waktu,Outlet,Base,Stok Lama,Stok Baru,Delta,User,Device,Status Sync\n';
+    history.forEach(log=>{
+      csv += `"${formatTime(log.timestamp)}","${log.outletName}","${log.base}",${log.old},${log.new},${log.delta},"${log.pinUser}","${log.device}","${log.syncStatus}"\n`;
+    });
+    
+    let blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
+    a.download = 'histori-stok-'+OUTLET_ID+'-'+new Date().toISOString().slice(0,10)+'.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  
+  function setupHistoryUI(){
+    // Cari tempat untuk tombol histori di halaman Stok Bahan
+    let grid = document.querySelector('.grid');
+    let header = null;
+    // Cari header Stok Bahan
+    let headers = document.querySelectorAll('h2, h1');
+    for(let h of headers){
+      if(h.textContent.toLowerCase().includes('stok bahan') || h.textContent.toLowerCase().includes('stok')){
+        header = h;
+        break;
+      }
+    }
+    
+    // Tambah tombol histori jika belum ada
+    if(header && !document.getElementById('ayaraHistoryBtn')){
+      let btn = document.createElement('button');
+      btn.id = 'ayaraHistoryBtn';
+      btn.innerHTML = '📜 Histori';
+      btn.onclick = function(){ showHistoryModal(); };
+      
+      // Sisipkan di sebelah header
+      let container = header.parentElement;
+      if(container){
+        container.style.display='flex';
+        container.style.alignItems='center';
+        container.style.justifyContent='space-between';
+        container.style.flexWrap='wrap';
+        container.style.gap='12px';
+        container.appendChild(btn);
+      }
+    }
+    
+    // Event handlers
+    let closeBtn = document.getElementById('ayaraHistoryClose');
+    let modal = document.getElementById('ayaraHistoryModal');
+    let exportBtn = document.getElementById('ayaraHistoryExportBtn');
+    let clearBtn = document.getElementById('ayaraHistoryClearBtn');
+    
+    if(closeBtn && !closeBtn.dataset.done){
+      closeBtn.dataset.done='1';
+      closeBtn.onclick = function(){ hideHistoryModal(); };
+    }
+    
+    if(modal && !modal.dataset.done){
+      modal.dataset.done='1';
+      modal.addEventListener('click', function(e){
+        if(e.target===modal) hideHistoryModal();
+      });
+    }
+    
+    if(exportBtn && !exportBtn.dataset.done){
+      exportBtn.dataset.done='1';
+      exportBtn.onclick = function(){ exportCSV(); };
+    }
+    
+    if(clearBtn && !clearBtn.dataset.done){
+      clearBtn.dataset.done='1';
+      clearBtn.onclick = function(){
+        if(confirm('Yakin hapus semua histori stok?\n\nHistori lokal akan dihapus, tapi yang sudah sync ke Firebase tetap ada.')){
+          localStorage.removeItem(HISTORY_KEY);
+          renderHistory();
+        }
+      };
+    }
+    
+    // Filter chips
+    let filterChips = document.querySelectorAll('.ayara-filter-chip');
+    filterChips.forEach(chip=>{
+      if(chip.dataset.done) return;
+      chip.dataset.done='1';
+      chip.addEventListener('click', function(){
+        filterChips.forEach(c=>c.classList.remove('active'));
+        this.classList.add('active');
+        renderHistory(this.dataset.filter);
+      });
+    });
+  }
+  
+  window.showHistoryModal = function(){
+    document.getElementById('ayaraHistoryModal').classList.add('show');
+    renderHistory();
+  };
+  
+  window.hideHistoryModal = function(){
+    document.getElementById('ayaraHistoryModal').classList.remove('show');
+  };
+  
+  window.addHistoryLog = addHistoryLog;
+  window.getStockHistory = getHistory;
+  
+  // Hook ke confirm modal yang sudah ada - saat Ya, Ubah diklik, tambah histori
+  function hookConfirmButton(){
+    let confirmOk = document.getElementById('ayaraConfirmOk');
+    if(confirmOk && !confirmOk.dataset.historyHook){
+      confirmOk.dataset.historyHook='1';
+      confirmOk.addEventListener('click', function(){
+        // Ambil data dari variable global currentBase, currentOld, currentNew
+        try{
+          let base = window.currentBase || (typeof currentBase!=='undefined' ? currentBase : null);
+          let oldVal = window.currentOld || (typeof currentOld!=='undefined' ? currentOld : null);
+          let newVal = window.currentNew || (typeof currentNew!=='undefined' ? currentNew : null);
+          
+          // Coba ambil dari closure jika tidak di window
+          if(!base){
+            // Fallback: ambil dari localStorage atau terakhir
+            let history = getHistory();
+            // Jika tidak ada, tetap log dengan data dari input
+          }
+          
+          // Jika ada data, log
+          if(typeof currentBase!=='undefined' && typeof currentOld!=='undefined' && typeof currentNew!=='undefined'){
+            if(currentOld!==currentNew){
+              addHistoryLog(currentBase, currentOld, currentNew, '1111');
+            }
+          }
+        }catch(e){ console.log('Histori hook error', e); }
+      });
+    }
+  }
+  
+  // Override saveStock untuk auto-log
+  function patchSaveStock(){
+    // Cari dan patch fungsi saveStock yang dipanggil di confirm
+    let confirmOk = document.getElementById('ayaraConfirmOk');
+    if(confirmOk){
+      // Kita akan intercept di event listener confirm
+    }
+  }
+  
+  function init(){
+    setupHistoryUI();
+    hookConfirmButton();
+  }
+  
+  setInterval(init, 1000);
+  setTimeout(init, 300);
+  setTimeout(init, 1000);
+  
+  // Expose untuk dipanggil dari luar
+  window.AyaraHistory = {
+    add: addHistoryLog,
+    get: getHistory,
+    render: renderHistory,
+    exportCSV: exportCSV
+  };
+  
+})();
+</script>
+
+<script>
+(function(){
+  // Patch saveStock di modal confirm untuk auto tambah histori
+  let originalConfirmHandler = null;
+  function patchConfirmWithHistory(){
+    let confirmOk = document.getElementById('ayaraConfirmOk');
+    if(!confirmOk || confirmOk.dataset.historyPatched) return;
+    confirmOk.dataset.historyPatched='1';
+    
+    confirmOk.addEventListener('click', function(){
+      try{
+        // Ambil currentBase, Old, New dari scope luar (closure dari script sebelumnya)
+        // Kita coba akses via window atau via elemen
+        let baseEl = document.getElementById('ayaraConfirmTitle');
+        let base = baseEl ? baseEl.textContent.replace('Ubah Stok ','').replace('?','').trim() : 'Unknown';
+        
+        let descEl = document.getElementById('ayaraConfirmDesc');
+        let desc = descEl ? descEl.textContent : '';
+        // Format: Dari 9 porsi → 15 porsi
+        let match = desc.match(/Dari\s+(\d+)\s+porsi\s+→\s+(\d+)\s+porsi/);
+        if(match){
+          let oldVal = parseInt(match[1]);
+          let newVal = parseInt(match[2]);
+          if(window.AyaraHistory && window.AyaraHistory.add){
+            window.AyaraHistory.add(base, oldVal, newVal, '1111');
+          }
+        }
+      }catch(e){ console.log('History patch error', e); }
+    });
+  }
+  
+  setInterval(patchConfirmWithHistory, 1000);
+})();
+</script>
+
+
+<!-- FIX: Riwayat & Laporan Persist + Auto-Update - PROFESIONAL - AMD Pemurus Dalam -->
+<script>
+(function(){
+  console.log('🔧 Fix Riwayat & Laporan Persist - AMD Pemurus Dalam');
+  
+  const TX_KEY = 'ayara_transactions_persist_v2';
+  const OUTLET_ID = 'amd_pemurus_dalam';
+  const OUTLET_NAME = 'AMD Pemurus Dalam';
+  const MAX_TX = 500;
+  
+  // Cache-first load seperti stok
+  try{
+    let cached = localStorage.getItem(TX_KEY);
+    if(cached){
+      window.__ayaraTransactionsCache = JSON.parse(cached);
+      console.log('📦 Cache transaksi:', window.__ayaraTransactionsCache.length, 'trx');
+    } else {
+      window.__ayaraTransactionsCache = [];
+    }
+  }catch(e){ window.__ayaraTransactionsCache = []; }
+  
+  function getTransactions(){
+    try{
+      let t = JSON.parse(localStorage.getItem(TX_KEY)||'[]');
+      return Array.isArray(t) ? t : [];
+    }catch(e){ return []; }
+  }
+  
+  function saveTransactions(txs){
+    try{
+      localStorage.setItem(TX_KEY, JSON.stringify(txs.slice(0, MAX_TX)));
+      window.__ayaraTransactionsCache = txs.slice(0, MAX_TX);
+    }catch(e){ console.error('Gagal save transaksi', e); }
+  }
+  
+  function addTransactionPersist(tx){
+    // Normalisasi transaksi
+    let normalized = {
+      id: tx.id || 'TRX-'+Date.now(),
+      outletId: OUTLET_ID,
+      outletName: OUTLET_NAME,
+      timestamp: tx.timestamp || Date.now(),
+      date: new Date(tx.timestamp || Date.now()).toISOString(),
+      items: tx.items || tx.cart || [],
+      total: tx.total || 0,
+      tunai: tx.tunai || tx.cash || 0,
+      kembali: tx.kembali || tx.change || 0,
+      method: tx.method || tx.paymentMethod || 'tunai',
+      customer: tx.customer || null,
+      // Simpan raw juga
+      raw: tx
+    };
+    
+    let txs = getTransactions();
+    // Cek duplikat ID
+    if(txs.find(x=>x.id===normalized.id)){
+      console.log('Transaksi duplikat, skip', normalized.id);
+      return;
+    }
+    
+    txs.unshift(normalized);
+    saveTransactions(txs);
+    
+    // Sync ke Firebase/Supabase
+    try{
+      if(window.firebase && window.firebase.firestore){
+        window.firebase.firestore().collection('transactions').doc(normalized.id).set({
+          ...normalized,
+          createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+          outlet_id: OUTLET_ID
+        }, {merge:true}).catch(()=>{});
+      }
+      if(window.__ayaraSupabase && window.__ayaraSupabase.syncTransaction){
+        window.__ayaraSupabase.syncTransaction(normalized);
+      }
+    }catch(e){ console.log('Offline, transaksi disimpan lokal', e); }
+    
+    // Dispatch event biar Riwayat & Laporan auto-update
+    window.dispatchEvent(new CustomEvent('ayara:transactionAdded', {detail: normalized}));
+    window.dispatchEvent(new CustomEvent('ayara:transactionsUpdated', {detail: txs}));
+    
+    console.log('✅ Transaksi disimpan:', normalized.id, 'Rp'+normalized.total);
+    return normalized;
+  }
+  
+  // Hook ke __lastTransaction yang sudah ada di app
+  let lastTxObserver = null;
+  let lastSeenTxId = null;
+  
+  function hookLastTransaction(){
+    // Pantau window.__lastTransaction
+    if(window.__lastTransaction && window.__lastTransaction.id !== lastSeenTxId){
+      let tx = window.__lastTransaction;
+      lastSeenTxId = tx.id;
+      // Convert dari format __lastTransaction ke format persist
+      let toPersist = {
+        id: tx.id,
+        timestamp: Date.now(),
+        total: tx.total,
+        tunai: tx.tunai,
+        kembali: tx.kembali,
+        method: tx.method,
+        items: tx.items || []
+      };
+      addTransactionPersist(toPersist);
+    }
+  }
+  
+  // Intercept success modal show
+  let originalShowSuccess = window.__showAyaraSuccess;
+  window.__showAyaraSuccess = function(tx){
+    // Simpan dulu
+    if(tx){
+      let toPersist = {
+        id: tx.id || 'TRX-'+Date.now(),
+        timestamp: Date.now(),
+        total: tx.total,
+        tunai: tx.tunai,
+        kembali: tx.kembali,
+        method: tx.method,
+        items: tx.items || window.__lastCart || []
+      };
+      addTransactionPersist(toPersist);
+    }
+    
+    // Panggil original
+    if(originalShowSuccess){
+      return originalShowSuccess(tx);
+    }
+  };
+  
+  // Fungsi untuk render ulang Riwayat & Laporan dari cache jika kosong
+  function patchRiwayatLaporan(){
+    // Cari elemen Riwayat dan Laporan
+    let activePage = null;
+    try{
+      // Deteksi page aktif dari URL hash atau state React
+      let hash = window.location.hash;
+      if(hash.includes('riwayat')) activePage='riwayat';
+      else if(hash.includes('laporan')) activePage='laporan';
+      else {
+        // Coba deteksi dari DOM
+        let h1s = document.querySelectorAll('h1');
+        for(let h of h1s){
+          if(h.textContent.trim().toLowerCase()==='riwayat') activePage='riwayat';
+          if(h.textContent.trim().toLowerCase()==='laporan') activePage='laporan';
+        }
+      }
+    }catch(e){}
+    
+    // Jika di page Riwayat atau Laporan dan data kosong, inject dari cache
+    // Kita tidak override React, tapi kita sediakan data di window untuk React baca
+    window.__ayaraTransactionsForUI = getTransactions();
+  }
+  
+  // Expose untuk debugging dan untuk React hook
+  window.AyaraTx = {
+    get: getTransactions,
+    add: addTransactionPersist,
+    save: saveTransactions,
+    clear: function(){ 
+      if(confirm('Yakin hapus semua riwayat transaksi lokal?\nFirebase tetap ada.')){
+        localStorage.removeItem(TX_KEY); 
+        window.__ayaraTransactionsCache=[];
+        window.dispatchEvent(new CustomEvent('ayara:transactionsUpdated', {detail: []}));
+      }
+    },
+    exportCSV: function(){
+      let txs = getTransactions();
+      if(txs.length===0){ alert('Belum ada transaksi'); return; }
+      let csv = 'ID,Waktu,Outlet,Total,Tunai,Kembali,Metode,Items\n';
+      txs.forEach(t=>{
+        let waktu = new Date(t.timestamp).toLocaleString('id-ID', {timeZone:'Asia/Makassar'});
+        let items = (t.items||[]).map(i=>i.name||i.productId||'item').join('; ');
+        csv += `"${t.id}","${waktu}","${t.outletName}",${t.total},${t.tunai},${t.kembali},"${t.method}","${items}"\n`;
+      });
+      let blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = 'riwayat-transaksi-'+OUTLET_ID+'-'+new Date().toISOString().slice(0,10)+'.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+  
+  // Interval hook untuk pantau transaksi baru
+  setInterval(()=>{
+    hookLastTransaction();
+    patchRiwayatLaporan();
+  }, 800);
+  
+  setTimeout(()=>{
+    hookLastTransaction();
+    patchRiwayatLaporan();
+  }, 500);
+  
+  // Listen event untuk update UI navigasi
+  window.addEventListener('ayara:transactionAdded', function(e){
+    console.log('🔔 Event: transaksi baru', e.detail.id);
+    // Update badge atau trigger re-render Laporan/Riwayat jika mereka listen
+    // Kita juga bisa force React update dengan dispatch storage event
+    try{
+      localStorage.setItem('ayara_last_tx_event', Date.now().toString());
+    }catch(e){}
+  });
+  
+  // Juga hook ke Supabase syncTransaction jika ada
+  function patchSupabaseSync(){
+    if(window.__ayaraSupabase && window.__ayaraSupabase.syncTransaction && !window.__ayaraSupabase.syncTransaction._patched){
+      let orig = window.__ayaraSupabase.syncTransaction;
+      window.__ayaraSupabase.syncTransaction = function(tx){
+        // Simpan lokal juga
+        if(tx){
+          addTransactionPersist(tx);
+        }
+        return orig(tx);
+      };
+      window.__ayaraSupabase.syncTransaction._patched = true;
+      console.log('✅ Supabase syncTransaction patched');
+    }
+  }
+  
+  setInterval(patchSupabaseSync, 1000);
+  
+  console.log('✅ Fix Riwayat & Laporan Persist aktif - transaksi ga hilang setelah reload, navigasi auto-update via event');
+})();
+</script>
+
+<script>
+(function(){
+  // Tambahan: Patch Laporan & Riwayat page untuk load dari cache jika kosong
+  // Ini akan auto-inject data ke React state via window object
+  console.log('🔧 Patch Laporan & Riwayat UI dari cache');
+  
+  function injectTransactionsToUI(){
+    let txs = [];
+    try{ txs = JSON.parse(localStorage.getItem('ayara_transactions_persist_v2')||'[]'); }catch(e){}
+    if(txs.length===0) return;
+    
+    // Set ke window biar React component bisa baca
+    window.__ayaraTransactionsForUI = txs;
+    
+    // Jika ada element yang menampilkan total hari ini, update
+    try{
+      let today = new Date().toISOString().split('T')[0];
+      let todayTxs = txs.filter(t=>{
+        let d = new Date(t.timestamp).toISOString().split('T')[0];
+        return d===today;
+      });
+      let totalToday = todayTxs.reduce((sum,t)=>sum+(t.total||0),0);
+      
+      // Cari element Total Hari Ini di Laporan page
+      let totals = document.querySelectorAll('[class*="text-"]');
+      // Tidak override agresif, hanya sediakan data
+    }catch(e){}
+  }
+  
+  setInterval(injectTransactionsToUI, 1000);
+  setTimeout(injectTransactionsToUI, 800);
+})();
+</script>
+
 </body>
 </html>
