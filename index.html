@@ -2912,5 +2912,260 @@ window.attachDotToLogo = attachDotToLogoV31;
 })();
 </script>
 
+
+<!-- FIX PELAN-PELAN: Transaksi hilang + Laporan ga nyambung - JANGAN REBUILD STOK -->
+<script>
+(function(){
+  console.log('🩹 Fix pelan-pelan: Transaksi Persist + Laporan Nyambung - STOK AMAN');
+  
+  const TX_KEY = 'ayara_transactions_persist_v2';
+  const REAL_TX_KEY = 'ayara_real_transactions'; // untuk transaksi asli jualan, bukan mock
+  
+  function getRealTxs(){
+    try{ return JSON.parse(localStorage.getItem(REAL_TX_KEY)||'[]'); }catch(e){ return []; }
+  }
+  
+  function getPersistTxs(){
+    try{ return JSON.parse(localStorage.getItem(TX_KEY)||'[]'); }catch(e){ return []; }
+  }
+  
+  // Hook pembayaran: setiap ada __lastTransaction, simpan sebagai real
+  let lastTxIdSeen = localStorage.getItem('ayara_last_tx_id_seen')||'';
+  
+  function saveRealTx(tx){
+    if(!tx || !tx.id) return;
+    if(tx.id===lastTxIdSeen) return;
+    if(tx.id.includes('XXXX')) return; // skip mock
+    
+    let reals = getRealTxs();
+    if(reals.find(r=>r.id===tx.id)) return; // sudah ada
+    
+    let normalized = {
+      id: tx.id,
+      timestamp: Date.now(),
+      dateStr: new Date().toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}),
+      total: tx.total||0,
+      items: tx.items||[],
+      method: tx.method||'TUNAI',
+      status: 'LUNAS',
+      isReal: true
+    };
+    
+    reals.unshift(normalized);
+    localStorage.setItem(REAL_TX_KEY, JSON.stringify(reals.slice(0,200)));
+    localStorage.setItem('ayara_last_tx_id_seen', tx.id);
+    
+    // Juga simpan ke persist v2 untuk Laporan
+    let persist = getPersistTxs();
+    persist.unshift({
+      id: tx.id,
+      timestamp: Date.now(),
+      total: tx.total||0,
+      tunai: tx.tunai||0,
+      kembali: tx.kembali||0,
+      method: tx.method||'tunai',
+      items: tx.items||[],
+      outletId: 'amd_pemurus_dalam'
+    });
+    localStorage.setItem(TX_KEY, JSON.stringify(persist.slice(0,500)));
+    
+    console.log('✅ Real transaksi disimpan:', tx.id, 'Rp'+tx.total);
+    
+    // Trigger update Laporan & Riwayat via event
+    window.dispatchEvent(new CustomEvent('ayara:realTxAdded', {detail: normalized}));
+  }
+  
+  // Pantau __lastTransaction setiap 500ms
+  setInterval(()=>{
+    if(window.__lastTransaction && window.__lastTransaction.id){
+      saveRealTx(window.__lastTransaction);
+    }
+    // Juga pantau __showAyaraSuccess
+  }, 500);
+  
+  // PATCH UI Riwayat: inject transaksi real di atas mock
+  function patchRiwayatUI(){
+    try{
+      // Cek apakah di halaman Riwayat (ada h1 Riwayat)
+      let h1 = document.querySelector('h1');
+      if(!h1 || h1.textContent.trim()!=='Riwayat') return;
+      
+      let realTxs = getRealTxs();
+      if(realTxs.length===0) return;
+      
+      // Cari subtitle "5 transaksi • 5 mock awal • void restore stok"
+      let subtitle = null;
+      let ps = document.querySelectorAll('p');
+      for(let p of ps){
+        if(p.textContent.includes('transaksi') && p.textContent.includes('mock')){
+          subtitle = p;
+          break;
+        }
+      }
+      
+      if(subtitle && !subtitle.dataset.patched){
+        subtitle.dataset.patched='1';
+        let total = 5 + realTxs.length;
+        subtitle.textContent = total+' transaksi • '+realTxs.length+' asli • '+5+' mock awal • void restore stok';
+      }
+      
+      // Cari container list transaksi (div yang ada card AYR-...)
+      let firstCard = document.querySelector('[class*="rounded"]');
+      // Kita akan prepend card real di atas list
+      let riwayatContainer = null;
+      // Cari parent yang mengandung AYR- cards
+      let cards = document.querySelectorAll('div');
+      for(let c of cards){
+        if(c.textContent.includes('AYR-U1YB0C') || c.textContent.includes('AYR-ZYH7E6')){
+          riwayatContainer = c.parentElement;
+          break;
+        }
+      }
+      
+      if(riwayatContainer && !riwayatContainer.dataset.realInjected){
+        riwayatContainer.dataset.realInjected='1';
+        // Inject real transactions di atas
+        realTxs.forEach(rtx=>{
+          // Cek sudah ada di DOM?
+          if(document.body.textContent.includes(rtx.id)) return;
+          
+          let card = document.createElement('div');
+          card.className = 'ayara-real-tx';
+          card.style.cssText = 'background:white; border-radius:20px; padding:16px; margin-bottom:12px; display:flex; align-items:center; gap:12px; box-shadow:0 2px 12px rgba(0,0,0,0.05); border:2px solid #2B332E;';
+          card.innerHTML = `
+            <div style="width:56px; height:56px; border-radius:16px; background:#2B332E; color:white; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:10px;">REAL</div>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span style="font-weight:900; font-size:14px;">${rtx.id}</span>
+                <span style="background:#E8F5E9; color:#2E7D32; padding:3px 8px; border-radius:9999px; font-size:10px; font-weight:800;">LUNAS</span>
+                <span style="background:#F6F1EB; padding:3px 8px; border-radius:9999px; font-size:10px; font-weight:700;">${rtx.method}</span>
+              </div>
+              <div style="font-size:11px; color:#6B7280; margin-top:4px;">${rtx.dateStr} • asli jualan</div>
+              <div style="font-size:12px; color:#2B332E; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${(rtx.items||[]).map(i=>i.name||'item').join(', ')||'Transaksi baru'}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:900; font-size:16px;">Rp${(rtx.total||0).toLocaleString('id-ID')}</div>
+              <div style="font-size:11px; color:#9CA3AF;">${(rtx.items||[]).length||1} item</div>
+            </div>
+          `;
+          riwayatContainer.prepend(card);
+        });
+      }
+      
+    }catch(e){ console.log('patchRiwayat error', e); }
+  }
+  
+  // PATCH UI Laporan: update TOTAL PENJUALAN HARI INI + JUMLAH TRANSAKSI dari real + mock
+  function patchLaporanUI(){
+    try{
+      let h1 = document.querySelector('h1');
+      if(!h1 || h1.textContent.trim()!=='Laporan') return;
+      
+      let realTxs = getRealTxs();
+      if(realTxs.length===0) return;
+      
+      // Hitung total hari ini dari real + mock hari ini (AYR-ZYH7E6 adalah 15 Okt)
+      let today = new Date().toDateString();
+      let todayReal = realTxs.filter(t=> new Date(t.timestamp).toDateString()===today);
+      let totalRealToday = todayReal.reduce((s,t)=>s+(t.total||0),0);
+      
+      // Cari card TOTAL PENJUALAN HARI INI
+      let totalEls = document.querySelectorAll('div');
+      for(let el of totalEls){
+        if(el.textContent.includes('TOTAL PENJUALAN HARI INI') && el.querySelector){
+          let rpEl = el.parentElement ? el.parentElement.querySelector('div') : null;
+          // Cari Rp... di dalam card yang sama
+          let card = el.closest('div[style*="border-radius"], div[class*="rounded"]');
+          if(card && card.textContent.includes('Rp')){
+            // Jangan patch berulang
+            if(card.dataset.realPatched) continue;
+            
+            // Ambil total sekarang (misal Rp36.000)
+            let match = card.textContent.match(/Rp([\d\.]+)/);
+            if(match){
+              let currentTotal = parseInt(match[1].replace(/\./g,''))||0;
+              let newTotal = currentTotal + totalRealToday;
+              
+              // Update DOM Rp
+              let rpDivs = card.querySelectorAll('div');
+              for(let d of rpDivs){
+                if(d.textContent.startsWith('Rp') && !d.dataset.patched){
+                  d.textContent = 'Rp'+newTotal.toLocaleString('id-ID');
+                  d.dataset.patched='1';
+                  break;
+                }
+              }
+              
+              // Update "1 transaksi lunas" jadi "1 + X transaksi lunas"
+              for(let d of rpDivs){
+                if(d.textContent.includes('transaksi lunas') && !d.dataset.patchedTx){
+                  let curMatch = d.textContent.match(/(\d+)\s+transaksi/);
+                  let curCount = curMatch ? parseInt(curMatch[1]) : 1;
+                  d.textContent = (curCount + todayReal.length)+' transaksi lunas ('+todayReal.length+' asli)';
+                  d.dataset.patchedTx='1';
+                  break;
+                }
+              }
+              
+              card.dataset.realPatched='1';
+              console.log('✅ Laporan patched: Rp'+currentTotal+' + Rp'+totalRealToday+' = Rp'+newTotal);
+            }
+          }
+        }
+      }
+      
+      // Update JUMLAH TRANSAKSI card
+      let jumlahLabel = null;
+      for(let el of document.querySelectorAll('div')){
+        if(el.textContent.trim()==='JUMLAH TRANSAKSI' && el.parentElement){
+          let card = el.parentElement;
+          if(card.dataset.jumlahPatched) continue;
+          let numDiv = card.querySelector('div:nth-child(2)');
+          // Cari angka 1
+          for(let child of card.children){
+            if(child.textContent.trim()==='1' && !child.dataset.patched){
+              let cur = 1;
+              child.textContent = (cur + todayReal.length).toString();
+              child.dataset.patched='1';
+              break;
+            }
+          }
+          card.dataset.jumlahPatched='1';
+        }
+      }
+      
+    }catch(e){ console.log('patchLaporan error', e); }
+  }
+  
+  // Jalankan patch setiap 1 detik saat di Riwayat/Laporan
+  setInterval(()=>{
+    patchRiwayatUI();
+    patchLaporanUI();
+  }, 800);
+  
+  setTimeout(()=>{
+    patchRiwayatUI();
+    patchLaporanUI();
+  }, 1000);
+  
+  // Expose untuk debug
+  window.AyaraReal = {
+    get: getRealTxs,
+    clear: function(){
+      if(confirm('Hapus transaksi asli? Mock tetap ada.')){
+        localStorage.removeItem(REAL_TX_KEY);
+        localStorage.removeItem('ayara_last_tx_id_seen');
+        location.reload();
+      }
+    },
+    addDummy: function(){
+      saveRealTx({id:'AYR-TEST'+Date.now().toString().slice(-4), total: 25000, items:[{name:'Ayam Bakar'}], method:'TUNAI'});
+    }
+  };
+  
+  console.log('✅ Fix pelan-pelan aktif - stok aman, transaksi real disimpan di localStorage, Laporan auto nyambung');
+})();
+</script>
+
 </body>
 </html>
